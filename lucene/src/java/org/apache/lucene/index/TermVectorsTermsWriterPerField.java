@@ -22,6 +22,7 @@ import java.io.IOException;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.store.IndexOutput;
+import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 
 final class TermVectorsTermsWriterPerField extends TermsHashConsumerPerField {
@@ -76,14 +77,16 @@ final class TermVectorsTermsWriterPerField extends TermsHashConsumerPerField {
         assert perThread.doc.numVectorFields == 0;
         assert 0 == perThread.doc.perDocTvf.length();
         assert 0 == perThread.doc.perDocTvf.getFilePointer();
-      } else {
-        assert perThread.doc.docID == docState.docID;
+      }
 
-        if (termsHashPerField.numPostings != 0)
-          // Only necessary if previous doc hit a
-          // non-aborting exception while writing vectors in
-          // this field:
-          termsHashPerField.reset();
+      assert perThread.doc.docID == docState.docID;
+
+      if (termsHashPerField.bytesHash.size() != 0) {
+        // Only necessary if previous doc hit a
+        // non-aborting exception while writing vectors in
+        // this field:
+        termsHashPerField.reset();
+        perThread.termsHashPerThread.reset(false);
       }
     }
 
@@ -98,13 +101,13 @@ final class TermVectorsTermsWriterPerField extends TermsHashConsumerPerField {
   /** Called once per field per document if term vectors
    *  are enabled, to write the vectors to
    *  RAMOutputStream, which is then quickly flushed to
-   *  * the real term vectors files in the Directory. */
+   *  the real term vectors files in the Directory. */
   @Override
   void finish() throws IOException {
 
     assert docState.testPoint("TermVectorsTermsWriterPerField.finish start");
 
-    final int numPostings = termsHashPerField.numPostings;
+    final int numPostings = termsHashPerField.bytesHash.size();
 
     final BytesRef flushTerm = perThread.flushTerm;
 
@@ -188,6 +191,12 @@ final class TermVectorsTermsWriterPerField extends TermsHashConsumerPerField {
     }
 
     termsHashPerField.reset();
+
+    // NOTE: we clear, per-field, at the thread level,
+    // because term vectors fully write themselves on each
+    // field; this saves RAM (eg if large doc has two large
+    // fields w/ term vectors on) because we recycle/reuse
+    // all RAM after each field:
     perThread.termsHashPerThread.reset(false);
   }
 

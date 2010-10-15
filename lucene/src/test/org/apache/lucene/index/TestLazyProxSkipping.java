@@ -18,10 +18,11 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.index.codecs.CodecProvider;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
@@ -33,6 +34,7 @@ import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.BytesRef;
+import static org.junit.Assume.*;
 
 /**
  * Tests lazy skipping on the proximity file.
@@ -64,11 +66,11 @@ public class TestLazyProxSkipping extends LuceneTestCase {
       
     }
     
-    private void createIndex(Random random, int numHits) throws IOException {
+    private void createIndex(int numHits) throws IOException {
         int numDocs = 500;
         
         Directory directory = new SeekCountingDirectory(new RAMDirectory());
-        IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(10));
+        IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, true, false)).setMaxBufferedDocs(10));
         ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundFile(false);
         ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundDocStore(false);
         for (int i = 0; i < numDocs; i++) {
@@ -106,8 +108,8 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         return this.searcher.search(pq, null, 1000).scoreDocs;        
     }
     
-    private void performTest(Random random, int numHits) throws IOException {
-        createIndex(random, numHits);
+    private void performTest(int numHits) throws IOException {
+        createIndex(numHits);
         this.seeksCounter = 0;
         ScoreDoc[] hits = search();
         // verify that the right number of docs was found
@@ -117,11 +119,13 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         assertTrue(this.seeksCounter > 0);
         assertTrue("seeksCounter=" + this.seeksCounter + " numHits=" + numHits, this.seeksCounter <= numHits + 1);
     }
-    
+ 
     public void testLazySkipping() throws IOException {
-        // test whether only the minimum amount of seeks() are performed
-        performTest(random, 5);
-        performTest(random, 10);
+        assumeTrue(!CodecProvider.getDefaultCodec().equals("SimpleText"));
+        // test whether only the minimum amount of seeks()
+        // are performed
+        performTest(5);
+        performTest(10);
     }
     
     public void testSeek() throws IOException {

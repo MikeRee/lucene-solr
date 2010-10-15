@@ -28,6 +28,9 @@ New Features
 
   * LUCENE-2608: Added the ability to specify the accuracy at method time in the SpellChecker.  The per class
     method is also still available.  (Grant Ingersoll)
+    
+  * LUCENE-2507: Added DirectSpellChecker, which retrieves correction candidates directly 
+    from the term dictionary using levenshtein automata.  (Robert Muir)
 
 API Changes
 
@@ -35,6 +38,9 @@ API Changes
     safety, serialization, and performance problems. If you have
     written a custom RegexCapabilities it will need to be updated
     to the new API.  (Robert Muir, Uwe Schindler)
+
+  * LUCENE-2638 MakeHighFreqTerms.TermStats public to make it more useful
+    for API use. (Andrzej Bialecki)
 
 ======================= Lucene 3.x (not yet released) =======================
 
@@ -121,6 +127,10 @@ Bug fixes
 * LUCENE-2629: Fix gennorm2 task for generating ICUFoldingFilter's .nrm file. This allows
   you to customize its normalization/folding, by editing the source data files in src/data
   and regenerating a new .nrm with 'ant gennorm2'.  (David Bowen via Robert Muir)
+
+* LUCENE-2653: ThaiWordFilter depends on the JRE having a Thai dictionary, which is not
+  always the case. If the dictionary is unavailable, the filter will now throw 
+  UnsupportedOperationException in the constructor.  (Robert Muir)
 
    
 API Changes
@@ -248,7 +258,8 @@ Build
    dependency management between contribs by a new ANT macro.
    (Uwe Schindler, Shai Erera)
 
- * LUCENE-2399: Upgrade contrib/icu's ICU jar file to ICU 4.4.  (Robert Muir)
+ * LUCENE-2399, LUCENE-2683: Upgrade contrib/icu's ICU jar file to ICU 4.4.2  
+   (Robert Muir)
    
 Optimizations
 

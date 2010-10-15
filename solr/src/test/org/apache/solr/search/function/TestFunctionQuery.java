@@ -23,6 +23,7 @@ import org.apache.lucene.search.Similarity;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.internal.runners.statements.Fail;
 
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -339,7 +340,69 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     assertQ(req("fl","*,score","q", q, "qq","text:superman", "fq",fq), "//float[@name='score']>'1.0'");
 
 
+    // test full param dereferencing
+    assertQ(req("fl","*,score","q", "{!func}add($v1,$v2)", "v1","add($v3,$v4)", "v2","1", "v3","2", "v4","5"
+        , "fq","id:1"), "//float[@name='score']='8.0'");
+
+    // test ability to parse multiple values
+    assertQ(req("fl","*,score","q", "{!func}dist(2,vector(1,1),$pt)", "pt","3,1"
+        , "fq","id:1"), "//float[@name='score']='2.0'");
+
+    // test that extra stuff after a function causes an error
+    try {
+      assertQ(req("fl","*,score","q", "{!func}10 wow dude ignore_exception"));
+      fail();
+    } catch (Exception e) {
+      // OK
+    }
+
     purgeFieldCache(FieldCache.DEFAULT);   // avoid FC insanity
+  }
+
+  @Test
+  public void testSortByFunc() throws Exception {
+    assertU(adoc("id", "1", "x_i", "100"));
+    assertU(adoc("id", "2", "x_i", "300"));
+    assertU(adoc("id", "3", "x_i", "200"));
+    assertU(commit());
+
+    String desc = "/response/docs==[{'x_i':300},{'x_i':200},{'x_i':100}]";
+    String asc =  "/response/docs==[{'x_i':100},{'x_i':200},{'x_i':300}]";
+
+    String q = "id:[1 TO 3]";
+    assertJQ(req("q",q,  "fl","x_i", "sort","add(x_i,x_i) desc")
+      ,desc
+    );
+
+    // param sub of entire function
+    assertJQ(req("q",q,  "fl","x_i", "sort", "$x asc", "x","add(x_i,x_i)")
+      ,asc
+    );
+
+    // multiple functions
+    assertJQ(req("q",q,  "fl","x_i", "sort", "$x asc, $y desc", "x", "5", "y","add(x_i,x_i)")
+      ,desc
+    );
+
+    // multiple functions inline
+    assertJQ(req("q",q,  "fl","x_i", "sort", "add( 10 , 10 ) asc, add(x_i , $const) desc", "const","50")
+      ,desc
+    );
+
+    // test function w/ local params + func inline
+     assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=foo}add(x_i,x_i) desc")
+      ,desc
+    );
+
+    // test multiple functions w/ local params + func inline
+    assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=bar}add(10,20) asc, {!key=foo}add(x_i,x_i) desc")
+      ,desc
+    );
+
+    // test multiple functions w/ local param value not inlined
+    assertJQ(req("q",q,  "fl","x_i", "sort", "{!key=bar v=$s1} asc, {!key=foo v=$s2} desc", "s1","add(3,4)", "s2","add(x_i,5)")
+      ,desc
+    );
   }
 
   @Test

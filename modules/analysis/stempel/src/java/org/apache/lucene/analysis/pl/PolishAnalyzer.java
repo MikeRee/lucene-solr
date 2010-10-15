@@ -113,7 +113,7 @@ public final class PolishAnalyzer extends StopwordAnalyzerBase {
 
   /**
    * Builds an analyzer with the given stop words. If a non-empty stem exclusion set is
-   * provided this analyzer will add a {@link KeywordMarkerTokenFilter} before
+   * provided this analyzer will add a {@link KeywordMarkerFilter} before
    * stemming.
    * 
    * @param matchVersion lucene compatibility version
@@ -143,7 +143,7 @@ public final class PolishAnalyzer extends StopwordAnalyzerBase {
   protected TokenStreamComponents createComponents(String fieldName,
       Reader reader) {
     final Tokenizer source = new StandardTokenizer(matchVersion, reader);
-    TokenStream result = new StandardFilter(source);
+    TokenStream result = new StandardFilter(matchVersion, source);
     result = new LowerCaseFilter(matchVersion, result);
     result = new StopFilter(matchVersion, result, stopwords);
     if(!stemExclusionSet.isEmpty())

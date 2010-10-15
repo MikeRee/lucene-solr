@@ -1012,7 +1012,7 @@ public class TestIndexWriter extends LuceneTestCase {
      */
     public void testCommitOnCloseDiskUsage() throws IOException {
       MockDirectoryWrapper dir = newDirectory();      
-      IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(10));
+      IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(10).setReaderPooling(false));
       ((LogMergePolicy) writer.getMergePolicy()).setMergeFactor(10);
       for(int j=0;j<30;j++) {
         addDocWithIndex(writer, j);
@@ -1024,7 +1024,7 @@ public class TestIndexWriter extends LuceneTestCase {
       long startDiskUsage = dir.getMaxUsedSizeInBytes();
       writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer())
         .setOpenMode(OpenMode.APPEND).setMaxBufferedDocs(10).setMergeScheduler(
-            new SerialMergeScheduler()));
+                               new SerialMergeScheduler()).setReaderPooling(false));
       ((LogMergePolicy) writer.getMergePolicy()).setMergeFactor(10);
       for(int j=0;j<1470;j++) {
         addDocWithIndex(writer, j);
@@ -1185,6 +1185,7 @@ public class TestIndexWriter extends LuceneTestCase {
      *             removed because changing ram buffer settings during a write
      *             session won't be possible.
      */
+    @Deprecated
     public void testChangingRAMBuffer() throws IOException {
       MockDirectoryWrapper dir = newDirectory();      
       IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
@@ -1243,6 +1244,7 @@ public class TestIndexWriter extends LuceneTestCase {
      * @deprecated after setters on IW go away, this test can be deleted because
      *             changing those settings on IW won't be possible.
      */
+    @Deprecated
     public void testChangingRAMBuffer2() throws IOException {
       MockDirectoryWrapper dir = newDirectory();      
       IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
@@ -2114,6 +2116,11 @@ public class TestIndexWriter extends LuceneTestCase {
       }
       IndexWriter writer = new IndexWriter(directory, conf);
       ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(100);
+
+      // have to use compound file to prevent running out of
+      // descripters when newDirectory returns a file-system
+      // backed directory:
+      ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundFile(true);
       
       //System.out.println("TEST: pass=" + pass + " cms=" + (pass >= 2));
       for(int iter=0;iter<10;iter++) {
@@ -3524,7 +3531,7 @@ public class TestIndexWriter extends LuceneTestCase {
     assertEquals(0, tps.nextPosition());
     w.close();
 
-    assertTrue(_TestUtil.checkIndex(dir));
+    _TestUtil.checkIndex(dir);
     s.close();
     dir.close();
   }
@@ -3852,6 +3859,7 @@ public class TestIndexWriter extends LuceneTestCase {
         break;
       case 3:
         writer2.optimize();
+        break;
       case 4:
         writer2.commit();
       }
@@ -4261,11 +4269,11 @@ public class TestIndexWriter extends LuceneTestCase {
     TermPositionVector tpv = ((TermPositionVector) r.getTermFreqVector(0, "field"));
     TermVectorOffsetInfo[] termOffsets = tpv.getOffsets(0);
     assertEquals(1, termOffsets.length);
-    assertEquals(0, termOffsets[0].getStartOffset());
-    assertEquals(6, termOffsets[0].getEndOffset());
+    assertEquals(1, termOffsets[0].getStartOffset());
+    assertEquals(7, termOffsets[0].getEndOffset());
     termOffsets = tpv.getOffsets(1);
-    assertEquals(7, termOffsets[0].getStartOffset());
-    assertEquals(10, termOffsets[0].getEndOffset());
+    assertEquals(8, termOffsets[0].getStartOffset());
+    assertEquals(11, termOffsets[0].getEndOffset());
     r.close();
     dir.close();
   }
@@ -4296,8 +4304,37 @@ public class TestIndexWriter extends LuceneTestCase {
     assertEquals(0, termOffsets[0].getStartOffset());
     assertEquals(4, termOffsets[0].getEndOffset());
     termOffsets = tpv.getOffsets(1);
-    assertEquals(5, termOffsets[0].getStartOffset());
-    assertEquals(11, termOffsets[0].getEndOffset());
+    assertEquals(6, termOffsets[0].getStartOffset());
+    assertEquals(12, termOffsets[0].getEndOffset());
+    r.close();
+    dir.close();
+  }
+
+  // LUCENE-2529
+  public void testPositionIncrementGapEmptyField() throws Exception {
+    Directory dir = newDirectory();
+    MockAnalyzer analyzer = new MockAnalyzer();
+    analyzer.setPositionIncrementGap( 100 );
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( 
+        TEST_VERSION_CURRENT, analyzer));
+    Document doc = new Document();
+    Field f = newField("field", "", Field.Store.NO,
+                        Field.Index.ANALYZED, Field.TermVector.WITH_POSITIONS);
+    Field f2 = newField("field", "crunch man", Field.Store.NO,
+        Field.Index.ANALYZED, Field.TermVector.WITH_POSITIONS);
+    doc.add(f);
+    doc.add(f2);
+    w.addDocument(doc);
+    w.close();
+
+    IndexReader r = IndexReader.open(dir, true);
+    TermPositionVector tpv = ((TermPositionVector) r.getTermFreqVector(0, "field"));
+    int[] poss = tpv.getTermPositions(0);
+    assertEquals(1, poss.length);
+    assertEquals(100, poss[0]);
+    poss = tpv.getTermPositions(1);
+    assertEquals(1, poss.length);
+    assertEquals(101, poss[0]);
     r.close();
     dir.close();
   }
@@ -4788,17 +4825,20 @@ public class TestIndexWriter extends LuceneTestCase {
 
   public void testIndexDivisor() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, new MockAnalyzer(), IndexWriter.MaxFieldLength.UNLIMITED);
+    IndexWriterConfig config = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer());
+    config.setTermIndexInterval(2);
+    IndexWriter w = new IndexWriter(dir, config);
     StringBuilder s = new StringBuilder();
     // must be > 256
     for(int i=0;i<300;i++) {
-      s.append(' ').append(""+i);
+      s.append(' ').append(i);
     }
     Document d = new Document();
     Field f = newField("field", s.toString(), Field.Store.NO, Field.Index.ANALYZED);
     d.add(f);
     w.addDocument(d);
-    IndexReader r = w.getReader(2).getSequentialSubReaders()[0];
+    
+    IndexReader r = w.getReader().getSequentialSubReaders()[0];
     TermsEnum t = r.fields().terms("field").iterator();
     int count = 0;
     while(t.next() != null) {
@@ -4921,7 +4961,7 @@ public class TestIndexWriter extends LuceneTestCase {
     final Random r = random;
 
     Directory dir = newDirectory();
-    FlushCountingIndexWriter w = new FlushCountingIndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).setRAMBufferSizeMB(0.5).setMaxBufferedDocs(-1).setMaxBufferedDeleteTerms(-1));
+    FlushCountingIndexWriter w = new FlushCountingIndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, true, false)).setRAMBufferSizeMB(0.5).setMaxBufferedDocs(-1).setMaxBufferedDeleteTerms(-1));
     //w.setInfoStream(System.out);
     Document doc = new Document();
     doc.add(newField("field", "go 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20", Field.Store.NO, Field.Index.ANALYZED));
@@ -5237,7 +5277,6 @@ public class TestIndexWriter extends LuceneTestCase {
   // LUCENE-2593
   public void testCorruptionAfterDiskFullDuringMerge() throws IOException {
     MockDirectoryWrapper dir = newDirectory();
-    final Random rand = random;
     //IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setReaderPooling(true));
     IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setMergeScheduler(new SerialMergeScheduler()).setReaderPooling(true));
 

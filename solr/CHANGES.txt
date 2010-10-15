@@ -95,10 +95,10 @@ New Features
 ----------------------
 
 * SOLR-1302: Added several new distance based functions, including
-  Great Circle (haversine), Manhattan, Euclidean and String (using the
-  StringDistance methods in the Lucene spellchecker).
+  Great Circle (haversine) for geo search, Manhattan, Euclidean
+  and String (using the StringDistance methods in the Lucene spellchecker).
   Also added geohash(), deg() and rad() convenience functions.
-  See http://wiki.apache.org/solr/FunctionQuery. (gsingers)
+  See http://wiki.apache.org/solr/FunctionQuery. (yonik, gsingers)
 
 * SOLR-1553: New dismax parser implementation (accessible as "edismax")
   that supports full lucene syntax, improved reserved char escaping,
@@ -118,7 +118,7 @@ New Features
 
 * SOLR-1625: Add regexp support for TermsComponent (Uri Boness via noble)
 
-* SOLR-1297: Add sort by Function capability (gsingers)
+* SOLR-1297: Add sort by Function capability (gsingers, yonik)
 
 * SOLR-1139: Add TermsComponent Query and Response Support in SolrJ (Matt Weber via shalin)
 
@@ -130,8 +130,10 @@ New Features
 
 * SOLR-1653: Add PatternReplaceCharFilter (koji)
 
-* SOLR-1131: FieldTypes can now output multiple Fields per Type and still be searched.  This can be handy for hiding the details of a particular
-  implementation such as in the spatial case. (Chris Mattmann, shalin, noble, gsingers, yonik)
+* SOLR-1131: FieldTypes can now output multiple Fields per Type and still be
+  searched.  This can be handy for hiding the details of a particular
+  implementation such as in the spatial case.
+  (Chris Mattmann, shalin, noble, gsingers, yonik)
 
 * SOLR-1586: Add support for Geohash FieldType (Chris Mattmann, gsingers)
 
@@ -165,6 +167,11 @@ New Features
 * SOLR-1740: ShingleFilterFactory supports the "minShingleSize" and "tokenSeparator"
   parameters for controlling the minimum shingle size produced by the filter, and
   the separator string that it uses, respectively.  (Steven Rowe via rmuir)
+  
+* SOLR-744: ShingleFilterFactory supports the "outputUnigramsIfNoShingles"
+  parameter, to output unigrams if the number of input tokens is fewer than
+  minShingleSize, and no shingles can be generated.  
+  (Chris Harris via Steven Rowe)
   
 * SOLR-571: The autowarmCount for LRUCaches (LRUCache and FastLRUCache) now 
   supports "percentages" which get evaluated  relative the current size of 
@@ -210,9 +217,10 @@ New Features
 
 * SOLR-1984: Add HyphenationCompoundWordTokenFilterFactory. (PB via rmuir)
 
-* SOLR-1568: Added "native" filtering support for PointType, GeohashField.  Added LatLonType with filtering support too.  See
-  	     http://wiki.apache.org/solr/SpatialSearch and the example.  Refactored some items in Lucene spatial. 
-	     Removed SpatialTileField as the underlying CartesianTier is broken beyond repair and is going to be moved. (gsingers) 
+* SOLR-1568: Added native filtering support via geofilt for spatial field
+  types LatLonType, PointType, GeohashField. 
+  See http://wiki.apache.org/solr/SpatialSearch for examples. 
+  (yonik, gsingers)
    
 * SOLR-2015: Add a boolean attribute autoGeneratePhraseQueries to TextField.
   autoGeneratePhraseQueries="true" (the default) causes the query parser to
@@ -267,6 +275,26 @@ New Features
 
 * SOLR-792: Adding PivotFacetComponent for Hierarchical faceting
   (erik, Jeremy Hinegardner, Thibaut Lassalle, ryan)
+
+* SOLR-2128: Full parameter substitution for function queries.
+  Example: q=add($v1,$v2)&v1=mul(popularity,5)&v2=20.0
+  (yonik)
+
+* SOLR-2133: Function query parser can now parse multiple comma separated
+  value sources.  It also now fails if there is extra unexpected text
+  after parsing the functions, instead of silently ignoring it.
+  This allows expressions like q=dist(2,vector(1,2),$pt)&pt=3,4   (yonik)
+
+* LUCENE-2507: Added DirectSolrSpellChecker, which uses Lucene's DirectSpellChecker
+  to retrieve correction candidates directly from the term dictionary using
+  levenshtein automata.  (rmuir)
+
+* SOLR-2010: Added ability to verify that spell checking collations have
+   actual results in the index.  (James Dyer via gsingers)
+   
+* SOLR-1873: SolrCloud - added shared/central config and core/shard managment via zookeeper,
+  built-in load balancing, and infrastructure for future SolrCloud work. 
+  (yonik, Mark Miller)
 
 Optimizations
 ----------------------
@@ -483,10 +511,19 @@ Bug Fixes
   substitution/dereferencing.  Properly encode local params in
   distributed faceting.  (yonik)
 
-* SOLR-2114: Fixed parsing error in hsin function.  The function signature has changed slightly. (gsingers)
-
 * SOLR-2083: SpellCheckComponent misreports suggestions when distributed (James Dyer via gsingers)  
 
+* SOLR-2108: Fixed false positives when using wildcard queries on fields with reversed
+  wildcard support. For example, a query of *zemog* would match documents that contain
+  'gomez'.  (Landon Kuhn via Robert Muir)
+
+* SOLR-2135: Fix behavior of ConcurrentLRUCache when asking for
+  getLatestAccessedItems(0) or getOldestAccessedItems(0).
+  (David Smiley via hossman)
+
+* SOLR-2148: Highlighter doesn't support q.alt. (koji)
+
+* SOLR-2139: Wrong cast from string to float (Igor Rodionov via koji)
 
 Other Changes
 ----------------------
@@ -501,8 +538,6 @@ Other Changes
 
 * SOLR-1592: Refactor XMLWriter startTag to allow arbitrary attributes to be written
   (Chris A. Mattmann via noble)
-
-* SOLR-1561: Added Lucene 2.9.1 spatial contrib jar to lib. (gsingers)
 
 * SOLR-1570: Log warnings if uniqueKey is multi-valued or not stored (hossman, shalin) 
 

@@ -38,7 +38,6 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.*;
 
-import org.apache.solr.search.function.DocValues;
 import org.apache.solr.search.function.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,6 +91,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
    * 
    * @deprecated use alternate constructor
    */
+  @Deprecated
   public SolrIndexSearcher(SolrCore core, IndexSchema schema, String name, String path, boolean enableCache) throws IOException {
     this(core, schema,name, core.getIndexReaderFactory().newReader(core.getDirectoryFactory().open(path), false), true, enableCache);
   }
@@ -422,7 +422,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     
     Document d;
     if (documentCache != null) {
-      d = (Document)documentCache.get(i);
+      d = documentCache.get(i);
       if (d!=null) return d;
     }
 
@@ -539,7 +539,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     boolean positive = query==absQ;
 
     if (filterCache != null) {
-      DocSet absAnswer = (DocSet)filterCache.get(absQ);
+      DocSet absAnswer = filterCache.get(absQ);
       if (absAnswer!=null) {
         if (positive) return absAnswer;
         else return getPositiveDocSet(matchAllDocsQuery).andNot(absAnswer);
@@ -565,7 +565,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     boolean positive = query==absQ;
 
     if (filterCache != null) {
-      DocSet absAnswer = (DocSet)filterCache.get(absQ);
+      DocSet absAnswer = filterCache.get(absQ);
       if (absAnswer!=null) {
         if (positive) return absAnswer;
         else return getPositiveDocSet(matchAllDocsQuery).andNot(absAnswer);
@@ -587,7 +587,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
   DocSet getPositiveDocSet(Query q) throws IOException {
     DocSet answer;
     if (filterCache != null) {
-      answer = (DocSet)filterCache.get(q);
+      answer = filterCache.get(q);
       if (answer!=null) return answer;
     }
     answer = getDocSetNC(q,null);
@@ -599,7 +599,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
   DocSet getPositiveDocSet(Query q, DocsEnumState deState) throws IOException {
     DocSet answer;
     if (filterCache != null) {
-      answer = (DocSet)filterCache.get(q);
+      answer = filterCache.get(q);
       if (answer!=null) return answer;
     }
     answer = getDocSetNC(q,null,deState);
@@ -661,6 +661,80 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     }
 
     return answer;
+  }
+
+  Filter getFilter(Query q) throws IOException {
+    if (q == null) return null;
+    // TODO: support pure negative queries?
+
+    // if (q instanceof) {
+    // }
+
+    return getDocSet(q).getTopFilter();
+  }
+
+
+  Filter getFilter(DocSet setFilter, List<Query> queries) throws IOException {
+    Filter answer = setFilter == null ? null : setFilter.getTopFilter();
+
+    if (queries == null || queries.size() == 0) {
+      return answer;
+    }
+
+    if (answer == null && queries.size() == 1) {
+      return getFilter(queries.get(0));  
+    }
+
+
+    DocSet finalSet=null;
+
+    int nDocSets =0;
+    boolean[] neg = new boolean[queries.size()];
+    DocSet[] sets = new DocSet[queries.size()];
+    Query[] nocache = new Query[queries.size()];
+
+    int smallestIndex = -1;
+    int smallestCount = Integer.MAX_VALUE;
+    for (Query q : queries) {
+      // if (q instanceof)
+
+
+      Query posQuery = QueryUtils.getAbs(q);
+      sets[nDocSets] = getPositiveDocSet(posQuery);
+      // Negative query if absolute value different from original
+      if (q==posQuery) {
+        neg[nDocSets] = false;
+        // keep track of the smallest positive set.
+        // This optimization is only worth it if size() is cached, which it would
+        // be if we don't do any set operations.
+        int sz = sets[nDocSets].size();
+        if (sz<smallestCount) {
+          smallestCount=sz;
+          smallestIndex=nDocSets;
+          finalSet = sets[nDocSets];
+        }
+      } else {
+        neg[nDocSets] = true;
+      }
+
+      nDocSets++;
+    }
+
+    // if no positive queries, start off with all docs
+    if (finalSet==null) finalSet = getPositiveDocSet(matchAllDocsQuery);
+
+    // do negative queries first to shrink set size
+    for (int i=0; i<sets.length; i++) {
+      if (neg[i]) finalSet = finalSet.andNot(sets[i]);
+    }
+
+    for (int i=0; i<sets.length; i++) {
+      if (!neg[i] && i!=smallestIndex) finalSet = finalSet.intersection(sets[i]);
+    }
+
+    return finalSet.getTopFilter();
+
+
   }
 
   // query must be positive
@@ -807,7 +881,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
 
     DocSet first;
     if (filterCache != null) {
-      first = (DocSet)filterCache.get(absQ);
+      first = filterCache.get(absQ);
       if (first==null) {
         first = getDocSetNC(absQ,null);
         filterCache.put(absQ,first);
@@ -898,7 +972,8 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
   private static final int NO_CHECK_QCACHE       = 0x80000000;
   private static final int GET_DOCSET            = 0x40000000;
   private static final int NO_CHECK_FILTERCACHE  = 0x20000000;
-
+  
+  public static final int GET_DOCLIST           =        0x02; // get the documents actually returned in a response
   public static final int GET_SCORES             =       0x01;
 
 
@@ -913,6 +988,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
 
     boolean needScores = (cmd.getFlags() & GET_SCORES) != 0;
     boolean getDocSet = (cmd.getFlags() & GET_DOCSET) != 0;
+    boolean getDocList = (cmd.getFlags() & GET_DOCLIST) != 0; // doclist needed for debugging or highlighting
     Query query = QueryUtils.makeQueryable(cmd.getQuery());
 
     final Filter luceneFilter = filter==null ? null : filter.getTopFilter();
@@ -920,18 +996,16 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     Sort sort = cmd.getSort();
     if (sort == null) sort = new Sort();
 
-    // TODO: make this a generic collector list
-    List<TopGroupCollector> collectors = new ArrayList<TopGroupCollector>(cmd.groupCommands.size());
-    for (GroupCommand groupCommand : cmd.groupCommands) {
+    List<GroupCollector> collectors = new ArrayList<GroupCollector>(cmd.groupCommands.size());
+    for (Grouping.Command groupCommand : cmd.groupCommands) {
       // TODO: perhaps use some methods rather than instanceof
-      if (groupCommand instanceof GroupCommandFunc) {
-        GroupCommandFunc gc = (GroupCommandFunc)groupCommand;
+      if (groupCommand instanceof Grouping.CommandFunc) {
+        Grouping.CommandFunc gc = (Grouping.CommandFunc)groupCommand;
         Map context = ValueSource.newContext();
         gc.groupBy.createWeight(context, this);
         TopGroupCollector collector;
-        if (gc instanceof GroupSortCommand) {
-          GroupSortCommand sortGc = (GroupSortCommand) gc;
-          collector = new TopGroupSortCollector(gc.groupBy, context, sort, sortGc.sort, last);  
+        if (gc.groupSort != null && gc.groupSort != sort) {
+          collector = new TopGroupSortCollector(gc.groupBy, context, sort, gc.groupSort, last);
         } else {
           collector = new TopGroupCollector(gc.groupBy, context, sort, last);
         }
@@ -941,9 +1015,15 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
         gc.context = context;
         gc.collector = collector;
       }
+
+      if (groupCommand instanceof Grouping.CommandQuery) {
+        DocSet groupFilt = getDocSet(((Grouping.CommandQuery)groupCommand).query);
+        TopFieldCollector collector = TopFieldCollector.create(groupCommand.groupSort==null ? sort : groupCommand.groupSort, groupCommand.docsPerGroup, false, needScores, needScores, true);
+        collectors.add(new FilterCollector(groupFilt, collector));
+      }
     }
 
-    Collector allCollectors = MultiCollector.wrap(collectors);
+    Collector allCollectors = MultiCollector.wrap(collectors.toArray(new Collector[collectors.size()]));
     DocSetCollector setCollector = null;
     if (getDocSet) {
       // TODO: can callCollectors be zero length?
@@ -958,39 +1038,75 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     }
 
     // TODO: make this a generic collector list
+    int numPhase2 = 0;
     List<Phase2GroupCollector> phase2Collectors = new ArrayList<Phase2GroupCollector>(cmd.groupCommands.size());
-    for (GroupCommand groupCommand : cmd.groupCommands) {
-      if (groupCommand instanceof GroupCommandFunc) {
-        GroupCommandFunc gc = (GroupCommandFunc)groupCommand;
-        Sort collectorSort;
-        if (gc instanceof GroupSortCommand) {
-          collectorSort = ((GroupSortCommand) gc).sort;
-        } else {
-          collectorSort = sort;
-        }
-
+    for (Grouping.Command groupCommand : cmd.groupCommands) {
+      if (groupCommand instanceof Grouping.CommandFunc) {
+        Grouping.CommandFunc gc = (Grouping.CommandFunc)groupCommand;
+        Sort collectorSort = gc.groupSort == null ? sort : gc.groupSort;
         Phase2GroupCollector collector = new Phase2GroupCollector((TopGroupCollector)gc.collector, gc.groupBy, gc.context, collectorSort, gc.docsPerGroup, needScores);
         phase2Collectors.add(collector);
+        numPhase2++;
+      } else if (groupCommand instanceof Grouping.CommandQuery) {
+        phase2Collectors.add(null);
+      } else {
+        phase2Collectors.add(null);        
       }
     }
 
     // TODO: optionally cache docs and feed them back through rather than re-searching
-    search(query, luceneFilter, MultiCollector.wrap(phase2Collectors));
+    if (numPhase2 > 0)
+      search(query, luceneFilter, MultiCollector.wrap(phase2Collectors.toArray(new Collector[phase2Collectors.size()])));
 
+    Set<Integer> idSet = new LinkedHashSet<Integer>();  // used for tracking unique docs when we need a doclist
+    int maxMatches = 0;
+    float maxScore = Float.NEGATIVE_INFINITY;
 
     NamedList grouped = new SimpleOrderedMap();
     for (int cmdnum=0; cmdnum<cmd.groupCommands.size(); cmdnum++) {
-      GroupCommand groupCommand = cmd.groupCommands.get(cmdnum);
-      GroupCommandFunc groupCommandFunc = (GroupCommandFunc)groupCommand;
-      TopGroupCollector collector = collectors.get(cmdnum);
-      Phase2GroupCollector collector2 = phase2Collectors.get(cmdnum);
-
-      if (collector.orderedGroups == null) collector.buildSet();
+      Grouping.Command groupCommand = cmd.groupCommands.get(cmdnum);
+      GroupCollector gcollector = collectors.get(cmdnum);
 
       NamedList groupResult = new SimpleOrderedMap();
       grouped.add(groupCommand.key, groupResult);  // grouped={ key={
 
-      groupResult.add("matches", collector.getMatches());
+      int this_matches = gcollector.getMatches();
+      groupResult.add("matches", this_matches);
+      maxMatches = Math.max(maxMatches, this_matches);
+
+      // TODO: refactor this
+      if (groupCommand instanceof Grouping.CommandQuery) {
+        TopDocs topDocs = ((FilterCollector)gcollector).getTopFieldCollector().topDocs(0, groupCommand.docsPerGroup);
+
+        // TODO: refactor
+
+        //topDocs.totalHits
+        int ids[] = new int[topDocs.scoreDocs.length];
+        float[] scores = needScores ? new float[topDocs.scoreDocs.length] : null;
+        for (int i=0; i<ids.length; i++) {
+          ids[i] = topDocs.scoreDocs[i].doc;
+          if (scores != null)
+            scores[i] = topDocs.scoreDocs[i].score;
+        }
+
+        float score = topDocs.getMaxScore();
+        maxScore = Math.max(maxScore, score);
+        DocSlice docs = new DocSlice(0, ids.length, ids, scores, topDocs.totalHits, score);
+        groupResult.add("doclist", docs);
+
+        if (getDocList) {
+          for (int id : ids)
+            idSet.add(id);
+        }
+
+        continue;
+      }
+
+      Grouping.CommandFunc groupCommandFunc = (Grouping.CommandFunc)groupCommand;
+      TopGroupCollector collector = (TopGroupCollector)gcollector;
+      Phase2GroupCollector collector2 = phase2Collectors.get(cmdnum);
+
+      if (collector.orderedGroups == null) collector.buildSet();
 
       List groupList = new ArrayList();
       groupResult.add("groups", groupList);        // grouped={ key={ groups=[
@@ -1014,9 +1130,15 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
             scores[i] = topDocs.scoreDocs[i].score;
         }
 
-        DocSlice docs = new DocSlice(0, ids.length, ids, scores, topDocs.totalHits, topDocs.getMaxScore());
+        float score = topDocs.getMaxScore();
+        maxScore = Math.max(maxScore, score);
+        DocSlice docs = new DocSlice(0, ids.length, ids, scores, topDocs.totalHits, score);
         nl.add("doclist", docs);
 
+        if (getDocList) {
+          for (int id : ids)
+            idSet.add(id);
+        }
 
         /*** values from stage 1
          DocSlice docs = new DocSlice(0, 1, new int[] {group.topDoc}, null, 1, 0);
@@ -1030,9 +1152,20 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
          groupResult.add(nl);
          ***/
       }
-      qr.groupedResults = grouped;
-
     }
+
+    qr.groupedResults = grouped;    
+
+    if (getDocList) {
+      int sz = idSet.size();
+      int[] ids = new int[sz];
+      int idx = 0;
+      for (int val : idSet) {
+        ids[idx++] = val;
+      }
+      qr.docListAndSet.docList = new DocSlice(0, sz, ids, null, maxMatches, maxScore);
+    }
+
   }
 
   /**
@@ -1062,7 +1195,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
         // so set all of them on the cache key.
         key = new QueryResultKey(cmd.getQuery(), cmd.getFilterList(), cmd.getSort(), cmd.getFlags());
         if ((cmd.getFlags() & NO_CHECK_QCACHE)==0) {
-          superset = (DocList)queryResultCache.get(key);
+          superset = queryResultCache.get(key);
 
           if (superset != null) {
             // check that the cache entry has scores recorded if we need them
@@ -1855,7 +1988,7 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     private int flags;
     private long timeAllowed = -1;
 
-    public List<GroupCommand> groupCommands;
+    public List<Grouping.Command> groupCommands;
 
     public Query getQuery() { return query; }
     public QueryCommand setQuery(Query query) {
@@ -1957,28 +2090,6 @@ public class SolrIndexSearcher extends IndexSearcher implements SolrInfoMBean {
     }
   }
 
-  public static class GroupCommand {
-    public String key;  // the name to use for this group in the response
-    public Sort groupSort;  // the sort of the documents *within* a single group.
-    public int groupLimit;   // how many groups - defaults to the "rows" parameter
-    public int docsPerGroup; // how many docs in each group - from "group.limit" param, default=1
-
-
-    
-  }
-
-  public static class GroupCommandFunc extends GroupCommand {
-    public ValueSource groupBy;
-
-
-    // todo - find a better place to store these
-    transient Map context;
-    transient Collector collector;
-  }
-
-  public static class GroupSortCommand extends GroupCommandFunc {
-    public Sort sort;
-  }
 
   /**
    * The result of a search.

@@ -18,6 +18,8 @@ package org.apache.lucene.analysis.th;
  */
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.util.Version;
+import org.junit.Assume;
 
 /**
  * Test case for ThaiAnalyzer, modified from TestFrenchAnalyzer
@@ -31,41 +33,42 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
 	 * testcase for offsets
 	 */
 	public void testOffsets() throws Exception {
+	  Assume.assumeTrue(ThaiWordFilter.DBBI_AVAILABLE);
 		assertAnalyzesTo(new ThaiAnalyzer(TEST_VERSION_CURRENT), "การที่ได้ต้องแสดงว่างานดี", 
 		    new String[] { "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี" },
 				new int[] { 0, 3, 6, 9, 13, 17, 20, 23 },
 				new int[] { 3, 6, 9, 13, 17, 20, 23, 25 });
 	}
 	
-	
-	/*
-	 * Thai numeric tokens are typed as <ALPHANUM> instead of <NUM>.
-	 * This is really a problem with the interaction w/ StandardTokenizer, which is used by ThaiAnalyzer.
-	 * 
-	 * The issue is this: in StandardTokenizer the entire [:Thai:] block is specified in ALPHANUM (including punctuation, digits, etc)
-	 * Fix is easy: refine this spec to exclude thai punctuation and digits.
-	 * 
-	 * A better fix, that would also fix quite a few other languages would be to remove the thai hack.
-	 * Instead, allow the definition of alphanum to include relevant categories like nonspacing marks!
-	 */
-	public void testBuggyTokenType() throws Exception {
-		assertAnalyzesTo(new ThaiAnalyzer(TEST_VERSION_CURRENT), "การที่ได้ต้องแสดงว่างานดี ๑๒๓", 
-		    new String[] { "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี", "๑๒๓" },
-				new String[] { "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", 
-		     "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>" });
-	}
-	
-	/* correct testcase
 	public void testTokenType() throws Exception {
-    assertAnalyzesTo(new ThaiAnalyzer(TEST_VERSION_CURRENT), "การที่ได้ต้องแสดงว่างานดี ๑๒๓", 
-        new String[] { "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี", "๑๒๓" },
-        new String[] { "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", 
-         "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", "<NUM>" });
+      assertAnalyzesTo(new ThaiAnalyzer(TEST_VERSION_CURRENT), "การที่ได้ต้องแสดงว่างานดี ๑๒๓", 
+                       new String[] { "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี", "๑๒๓" },
+                       new String[] { "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>", 
+                                      "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>", 
+                                      "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>",
+                                      "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>",
+                                      "<NUM>" });
 	}
-	*/
 
-	public void testAnalyzer() throws Exception {
-		ThaiAnalyzer analyzer = new ThaiAnalyzer(TEST_VERSION_CURRENT);
+	/**
+	 * Thai numeric tokens were typed as <ALPHANUM> instead of <NUM>.
+	 * @deprecated testing backwards behavior
+ 	 */
+	@Deprecated
+	public void testBuggyTokenType30() throws Exception {
+	  Assume.assumeTrue(ThaiWordFilter.DBBI_AVAILABLE);
+		assertAnalyzesTo(new ThaiAnalyzer(Version.LUCENE_30), "การที่ได้ต้องแสดงว่างานดี ๑๒๓", 
+                         new String[] { "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี", "๑๒๓" },
+                         new String[] { "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", 
+                                        "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>", 
+                                        "<ALPHANUM>", "<ALPHANUM>", "<ALPHANUM>" });
+	}
+	
+	/** @deprecated testing backwards behavior */
+	@Deprecated
+    public void testAnalyzer30() throws Exception {
+ 	  Assume.assumeTrue(ThaiWordFilter.DBBI_AVAILABLE);
+        ThaiAnalyzer analyzer = new ThaiAnalyzer(Version.LUCENE_30);
 	
 		assertAnalyzesTo(analyzer, "", new String[] {});
 
@@ -90,6 +93,7 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
 	 * Test that position increments are adjusted correctly for stopwords.
 	 */
 	public void testPositionIncrements() throws Exception {
+	  Assume.assumeTrue(ThaiWordFilter.DBBI_AVAILABLE);
 	  ThaiAnalyzer analyzer = new ThaiAnalyzer(TEST_VERSION_CURRENT);
 
     assertAnalyzesTo(new ThaiAnalyzer(TEST_VERSION_CURRENT), "การที่ได้ต้อง the แสดงว่างานดี", 
@@ -107,6 +111,7 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
 	}
 	
 	public void testReusableTokenStream() throws Exception {
+	  Assume.assumeTrue(ThaiWordFilter.DBBI_AVAILABLE);
 	  ThaiAnalyzer analyzer = new ThaiAnalyzer(TEST_VERSION_CURRENT);
 	  assertAnalyzesToReuse(analyzer, "", new String[] {});
 
@@ -118,6 +123,23 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
       assertAnalyzesToReuse(
           analyzer,
           "บริษัทชื่อ XY&Z - คุยกับ xyz@demo.com",
-          new String[] { "บริษัท", "ชื่อ", "xy&z", "คุย", "กับ", "xyz@demo.com" });
+          new String[] { "บริษัท", "ชื่อ", "xy", "z", "คุย", "กับ", "xyz@demo.com" });
 	}
+	
+	/** @deprecated, for version back compat */
+	@Deprecated
+	public void testReusableTokenStream30() throws Exception {
+	    ThaiAnalyzer analyzer = new ThaiAnalyzer(Version.LUCENE_30);
+	    assertAnalyzesToReuse(analyzer, "", new String[] {});
+
+	    assertAnalyzesToReuse(
+            analyzer,
+            "การที่ได้ต้องแสดงว่างานดี",
+            new String[] { "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี"});
+
+	    assertAnalyzesToReuse(
+            analyzer,
+            "บริษัทชื่อ XY&Z - คุยกับ xyz@demo.com",
+            new String[] { "บริษัท", "ชื่อ", "xy&z", "คุย", "กับ", "xyz@demo.com" });
+    }
 }

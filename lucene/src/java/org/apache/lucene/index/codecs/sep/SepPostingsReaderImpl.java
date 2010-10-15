@@ -25,8 +25,8 @@ import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentInfo;
-import org.apache.lucene.index.codecs.standard.StandardPostingsReader;
-import org.apache.lucene.index.codecs.standard.TermState;
+import org.apache.lucene.index.codecs.PostingsReaderBase;
+import org.apache.lucene.index.codecs.TermState;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
@@ -43,7 +43,7 @@ import org.apache.lucene.util.CodecUtil;
 // create two separate docs readers, one that also reads
 // prox and one that doesn't?
 
-public class SepPostingsReaderImpl extends StandardPostingsReader {
+public class SepPostingsReaderImpl extends PostingsReaderBase {
 
   final IntIndexInput freqIn;
   final IntIndexInput docIn;
@@ -504,6 +504,7 @@ public class SepPostingsReaderImpl extends StandardPostingsReader {
       posIndex.set(termState.posIndex);
       posSeekPending = true;
       //posIndex.seek(posReader);
+      payloadPending = false;
 
       skipOffset = termState.skipOffset;
       payloadOffset = termState.payloadOffset;
@@ -640,7 +641,6 @@ public class SepPostingsReaderImpl extends StandardPostingsReader {
           assert payloadLength >= 0;
         }
         pendingPosCount--;
-        payloadPending = true;
         position = 0;
         pendingPayloadBytes += payloadLength;
       }
@@ -653,14 +653,13 @@ public class SepPostingsReaderImpl extends StandardPostingsReader {
           assert payloadLength >= 0;
         }
         position += code >> 1;
+        pendingPayloadBytes += payloadLength;
+        payloadPending = payloadLength > 0;
       } else {
         position += code;
       }
     
-      pendingPayloadBytes += payloadLength;
-      payloadPending = payloadLength > 0;
       pendingPosCount--;
-      payloadPending = true;
       assert pendingPosCount >= 0;
       return position;
     }

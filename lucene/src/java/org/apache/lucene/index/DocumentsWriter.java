@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
@@ -41,8 +43,11 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMFile;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Constants;
+import org.apache.lucene.util.RecyclingByteBlockAllocator;
 import org.apache.lucene.util.ThreadInterruptedException;
 import org.apache.lucene.util.RamUsageEstimator;
+import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_MASK;
+import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_SIZE;
 
 /**
  * This class accepts multiple added documents and directly
@@ -113,6 +118,7 @@ import org.apache.lucene.util.RamUsageEstimator;
 
 final class DocumentsWriter {
 
+  final AtomicLong bytesUsed = new AtomicLong(0);
   IndexWriter writer;
   Directory directory;
 
@@ -195,6 +201,7 @@ final class DocumentsWriter {
   /**
    * RAMFile buffer for DocWriters.
    */
+  @SuppressWarnings("serial")
   class PerDocBuffer extends RAMFile {
     
     /**
@@ -257,9 +264,12 @@ final class DocumentsWriter {
 
       final TermsHashConsumer termVectorsWriter = new TermVectorsTermsWriter(documentsWriter);
       final TermsHashConsumer freqProxWriter = new FreqProxTermsWriter();
-
-      final InvertedDocConsumer  termsHash = new TermsHash(documentsWriter, true, freqProxWriter,
-                                                           new TermsHash(documentsWriter, false, termVectorsWriter, null));
+      /*
+       * nesting TermsHash instances here to allow the secondary (TermVectors) share the interned postings
+       * via a shared ByteBlockPool. See TermsHashPerField for details. 
+       */
+      final TermsHash termVectorsTermHash = new TermsHash(documentsWriter, false, termVectorsWriter, null);
+      final InvertedDocConsumer  termsHash = new TermsHash(documentsWriter, true, freqProxWriter, termVectorsTermHash);
       final NormsWriter normsWriter = new NormsWriter();
       final DocInverter docInverter = new DocInverter(termsHash, normsWriter);
       return new DocFieldProcessor(documentsWriter, docInverter);
@@ -636,6 +646,8 @@ final class DocumentsWriter {
       Collection<DocConsumerPerThread> threads = new HashSet<DocConsumerPerThread>();
       for(int i=0;i<threadStates.length;i++)
         threads.add(threadStates[i].consumer);
+
+      final long startNumBytesUsed = bytesUsed();
       consumer.flush(threads, flushState);
 
       if (infoStream != null) {
@@ -643,10 +655,10 @@ final class DocumentsWriter {
             flushState.numDocs, directory, false, -1, flushState.segmentName,
             false, hasProx(), flushState.codec);
         final long newSegmentSize = si.sizeInBytes();
-        String message = "  ramUsed=" + nf.format(numBytesUsed/1024./1024.) + " MB" +
+        String message = "  ramUsed=" + nf.format(startNumBytesUsed/1024./1024.) + " MB" +
           " newFlushedSize=" + newSegmentSize +
           " docs/MB=" + nf.format(numDocsInRAM/(newSegmentSize/1024./1024.)) +
-          " new/old=" + nf.format(100.0*newSegmentSize/numBytesUsed) + "%";
+          " new/old=" + nf.format(100.0*newSegmentSize/startNumBytesUsed) + "%";
         message(message);
       }
 
@@ -725,10 +737,12 @@ final class DocumentsWriter {
    * been acquired. */
   synchronized DocumentsWriterThreadState getThreadState(Document doc, Term delTerm) throws IOException {
 
+    final Thread currentThread = Thread.currentThread();
+
     // First, find a thread state.  If this thread already
     // has affinity to a specific ThreadState, use that one
     // again.
-    DocumentsWriterThreadState state = threadBindings.get(Thread.currentThread());
+    DocumentsWriterThreadState state = threadBindings.get(currentThread);
     if (state == null) {
 
       // First time this thread has called us since last
@@ -750,7 +764,7 @@ final class DocumentsWriter {
         state = newArray[threadStates.length] = new DocumentsWriterThreadState(this);
         threadStates = newArray;
       }
-      threadBindings.put(Thread.currentThread(), state);
+      threadBindings.put(currentThread, state);
     }
 
     // Next, wait until my thread state is idle (in case
@@ -961,7 +975,7 @@ final class DocumentsWriter {
 
   synchronized boolean deletesFull() {
     return (ramBufferSize != IndexWriterConfig.DISABLE_AUTO_FLUSH &&
-            (deletesInRAM.bytesUsed + deletesFlushed.bytesUsed + numBytesUsed) >= ramBufferSize) ||
+            (deletesInRAM.bytesUsed + deletesFlushed.bytesUsed + bytesUsed()) >= ramBufferSize) ||
       (maxBufferedDeleteTerms != IndexWriterConfig.DISABLE_AUTO_FLUSH &&
        ((deletesInRAM.size() + deletesFlushed.size()) >= maxBufferedDeleteTerms));
   }
@@ -1254,10 +1268,8 @@ final class DocumentsWriter {
   final SkipDocWriter skipDocWriter = new SkipDocWriter();
 
   long getRAMUsed() {
-    return numBytesUsed + deletesInRAM.bytesUsed + deletesFlushed.bytesUsed;
+    return bytesUsed() + deletesInRAM.bytesUsed + deletesFlushed.bytesUsed;
   }
-
-  long numBytesUsed;
 
   NumberFormat nf = NumberFormat.getInstance();
 
@@ -1293,62 +1305,11 @@ final class DocumentsWriter {
 
   /* Initial chunks size of the shared byte[] blocks used to
      store postings data */
-  final static int BYTE_BLOCK_SHIFT = 15;
-  final static int BYTE_BLOCK_SIZE = 1 << BYTE_BLOCK_SHIFT;
-  final static int BYTE_BLOCK_MASK = BYTE_BLOCK_SIZE - 1;
   final static int BYTE_BLOCK_NOT_MASK = ~BYTE_BLOCK_MASK;
 
   /* if you increase this, you must fix field cache impl for
    * getTerms/getTermsIndex requires <= 32768 */
   final static int MAX_TERM_LENGTH_UTF8 = BYTE_BLOCK_SIZE-2;
-
-  private class ByteBlockAllocator extends ByteBlockPool.Allocator {
-    final int blockSize;
-
-    ByteBlockAllocator(int blockSize) {
-      this.blockSize = blockSize;
-    }
-
-    ArrayList<byte[]> freeByteBlocks = new ArrayList<byte[]>();
-    
-    /* Allocate another byte[] from the shared pool */
-    @Override
-    byte[] getByteBlock() {
-      synchronized(DocumentsWriter.this) {
-        final int size = freeByteBlocks.size();
-        final byte[] b;
-        if (0 == size) {
-          b = new byte[blockSize];
-          numBytesUsed += blockSize;
-        } else
-          b = freeByteBlocks.remove(size-1);
-        return b;
-      }
-    }
-
-    /* Return byte[]'s to the pool */
-
-    @Override
-    void recycleByteBlocks(byte[][] blocks, int start, int end) {
-      synchronized(DocumentsWriter.this) {
-        for(int i=start;i<end;i++) {
-          freeByteBlocks.add(blocks[i]);
-          blocks[i] = null;
-        }
-      }
-    }
-
-    @Override
-    void recycleByteBlocks(List<byte[]> blocks) {
-      synchronized(DocumentsWriter.this) {
-        final int size = blocks.size();
-        for(int i=0;i<size;i++) {
-          freeByteBlocks.add(blocks.get(i));
-          blocks.set(i, null);
-        }
-      }
-    }
-  }
 
   /* Initial chunks size of the shared int[] blocks used to
      store postings data */
@@ -1364,14 +1325,14 @@ final class DocumentsWriter {
     final int[] b;
     if (0 == size) {
       b = new int[INT_BLOCK_SIZE];
-      numBytesUsed += INT_BLOCK_SIZE*INT_NUM_BYTE;
+      bytesUsed.addAndGet(INT_BLOCK_SIZE*INT_NUM_BYTE);
     } else
       b = freeIntBlocks.remove(size-1);
     return b;
   }
 
-  synchronized void bytesUsed(long numBytes) {
-    numBytesUsed += numBytes;
+  private long bytesUsed() {
+    return bytesUsed.get();
   }
 
   /* Return int[]s to the pool */
@@ -1382,11 +1343,11 @@ final class DocumentsWriter {
     }
   }
 
-  ByteBlockAllocator byteBlockAllocator = new ByteBlockAllocator(BYTE_BLOCK_SIZE);
+  final RecyclingByteBlockAllocator byteBlockAllocator = new RecyclingByteBlockAllocator(BYTE_BLOCK_SIZE, Integer.MAX_VALUE, bytesUsed);
 
   final static int PER_DOC_BLOCK_SIZE = 1024;
 
-  final ByteBlockAllocator perDocAllocator = new ByteBlockAllocator(PER_DOC_BLOCK_SIZE);
+  final RecyclingByteBlockAllocator perDocAllocator = new RecyclingByteBlockAllocator(PER_DOC_BLOCK_SIZE, Integer.MAX_VALUE, bytesUsed);
 
   String toMB(long v) {
     return nf.format(v/1024./1024.);
@@ -1413,19 +1374,19 @@ final class DocumentsWriter {
       }
     
       deletesRAMUsed = deletesInRAM.bytesUsed+deletesFlushed.bytesUsed;
-      doBalance = numBytesUsed+deletesRAMUsed >= ramBufferSize;
+      doBalance = bytesUsed() +deletesRAMUsed >= ramBufferSize;
     }
 
     if (doBalance) {
 
       if (infoStream != null)
-        message("  RAM: now balance allocations: usedMB=" + toMB(numBytesUsed) +
+        message("  RAM: now balance allocations: usedMB=" + toMB(bytesUsed()) +
                 " vs trigger=" + toMB(ramBufferSize) +
                 " deletesMB=" + toMB(deletesRAMUsed) +
-                " byteBlockFree=" + toMB(byteBlockAllocator.freeByteBlocks.size()*BYTE_BLOCK_SIZE) +
-                " perDocFree=" + toMB(perDocAllocator.freeByteBlocks.size()*PER_DOC_BLOCK_SIZE));
+                " byteBlockFree=" + toMB(byteBlockAllocator.bytesUsed()) +
+                " perDocFree=" + toMB(perDocAllocator.bytesUsed()));
 
-      final long startBytesUsed = numBytesUsed + deletesRAMUsed;
+      final long startBytesUsed = bytesUsed() + deletesRAMUsed;
 
       int iter = 0;
 
@@ -1435,16 +1396,16 @@ final class DocumentsWriter {
 
       boolean any = true;
 
-      while(numBytesUsed+deletesRAMUsed > freeLevel) {
+      while(bytesUsed()+deletesRAMUsed > freeLevel) {
       
         synchronized(this) {
-          if (0 == perDocAllocator.freeByteBlocks.size() &&
-              0 == byteBlockAllocator.freeByteBlocks.size() &&
+          if (0 == perDocAllocator.numBufferedBlocks() &&
+              0 == byteBlockAllocator.numBufferedBlocks() &&
               0 == freeIntBlocks.size() && !any) {
             // Nothing else to free -- must flush now.
-            bufferIsFull = numBytesUsed+deletesRAMUsed > ramBufferSize;
+            bufferIsFull = bytesUsed()+deletesRAMUsed > ramBufferSize;
             if (infoStream != null) {
-              if (numBytesUsed+deletesRAMUsed > ramBufferSize)
+              if (bytesUsed()+deletesRAMUsed > ramBufferSize)
                 message("    nothing to free; now set bufferIsFull");
               else
                 message("    nothing to free");
@@ -1452,25 +1413,15 @@ final class DocumentsWriter {
             break;
           }
 
-          if ((0 == iter % 4) && byteBlockAllocator.freeByteBlocks.size() > 0) {
-            byteBlockAllocator.freeByteBlocks.remove(byteBlockAllocator.freeByteBlocks.size()-1);
-            numBytesUsed -= BYTE_BLOCK_SIZE;
+          if ((0 == iter % 4) && byteBlockAllocator.numBufferedBlocks() > 0) {
+            byteBlockAllocator.freeBlocks(1);
           }
-
           if ((1 == iter % 4) && freeIntBlocks.size() > 0) {
             freeIntBlocks.remove(freeIntBlocks.size()-1);
-            numBytesUsed -= INT_BLOCK_SIZE * INT_NUM_BYTE;
+            bytesUsed.addAndGet(-INT_BLOCK_SIZE * INT_NUM_BYTE);
           }
-
-          if ((2 == iter % 4) && perDocAllocator.freeByteBlocks.size() > 0) {
-            // Remove upwards of 32 blocks (each block is 1K)
-            for (int i = 0; i < 32; ++i) {
-              perDocAllocator.freeByteBlocks.remove(perDocAllocator.freeByteBlocks.size() - 1);
-              numBytesUsed -= PER_DOC_BLOCK_SIZE;
-              if (perDocAllocator.freeByteBlocks.size() == 0) {
-                break;
-              }
-            }
+          if ((2 == iter % 4) && perDocAllocator.numBufferedBlocks() > 0) {
+            perDocAllocator.freeBlocks(32); // Remove upwards of 32 blocks (each block is 1K)
           }
         }
 
@@ -1482,7 +1433,7 @@ final class DocumentsWriter {
       }
 
       if (infoStream != null)
-        message("    after free: freedMB=" + nf.format((startBytesUsed-numBytesUsed-deletesRAMUsed)/1024./1024.) + " usedMB=" + nf.format((numBytesUsed+deletesRAMUsed)/1024./1024.));
+        message("    after free: freedMB=" + nf.format((startBytesUsed-bytesUsed()-deletesRAMUsed)/1024./1024.) + " usedMB=" + nf.format((bytesUsed()+deletesRAMUsed)/1024./1024.));
     }
   }
 

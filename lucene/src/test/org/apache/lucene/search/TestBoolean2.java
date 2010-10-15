@@ -55,12 +55,11 @@ public class TestBoolean2 extends LuceneTestCase {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
-    Random random = newStaticRandom(TestBoolean2.class);
-    directory = newDirectory(random);
+    directory = newDirectory();
     RandomIndexWriter writer= new RandomIndexWriter(random, directory);
     for (int i = 0; i < docFields.length; i++) {
       Document doc = new Document();
-      doc.add(newField(random, field, docFields[i], Field.Store.NO, Field.Index.ANALYZED));
+      doc.add(newField(field, docFields[i], Field.Store.NO, Field.Index.ANALYZED));
       writer.addDocument(doc);
     }
     writer.close();
@@ -82,15 +81,15 @@ public class TestBoolean2 extends LuceneTestCase {
     } while(docCount < 3000);
 
     RandomIndexWriter w = new RandomIndexWriter(random, dir2, 
-        newIndexWriterConfig(random, TEST_VERSION_CURRENT, new MockAnalyzer())
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer())
         .setMaxBufferedDocs(_TestUtil.nextInt(random, 50, 1000)));
     Document doc = new Document();
-    doc.add(newField(random, "field2", "xxx", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("field2", "xxx", Field.Store.NO, Field.Index.ANALYZED));
     for(int i=0;i<NUM_EXTRA_DOCS/2;i++) {
       w.addDocument(doc);
     }
     doc = new Document();
-    doc.add(newField(random, "field2", "big bad bug", Field.Store.NO, Field.Index.ANALYZED));
+    doc.add(newField("field2", "big bad bug", Field.Store.NO, Field.Index.ANALYZED));
     for(int i=0;i<NUM_EXTRA_DOCS/2;i++) {
       w.addDocument(doc);
     }
@@ -129,20 +128,19 @@ public class TestBoolean2 extends LuceneTestCase {
 //System.out.println();
 //System.out.println("Query: " + queryText);
 
-    Query query1 = makeQuery(queryText);
+    Query query = makeQuery(queryText);
     TopScoreDocCollector collector = TopScoreDocCollector.create(1000, false);
-    searcher.search(query1, null, collector);
+    searcher.search(query, null, collector);
     ScoreDoc[] hits1 = collector.topDocs().scoreDocs;
-    
-    Query query2 = makeQuery(queryText); // there should be no need to parse again...
+
     collector = TopScoreDocCollector.create(1000, true);
-    searcher.search(query2, null, collector);
+    searcher.search(query, null, collector);
     ScoreDoc[] hits2 = collector.topDocs().scoreDocs; 
 
     assertEquals(mulFactor * collector.totalHits,
-                 bigSearcher.search(query1, 1).totalHits);
+                 bigSearcher.search(query, 1).totalHits);
       
-    CheckHits.checkHitsQuery(query2, hits1, hits2, expDocNrs);
+    CheckHits.checkHitsQuery(query, hits1, hits2, expDocNrs);
   }
 
   @Test

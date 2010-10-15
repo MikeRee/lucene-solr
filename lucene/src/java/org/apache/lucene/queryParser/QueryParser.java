@@ -156,12 +156,15 @@ public class QueryParser implements QueryParserConstants {
   Collator rangeCollator = null;
 
   /** @deprecated remove when getFieldQuery is removed */
+  @Deprecated
   private static final VirtualMethod<QueryParser> getFieldQueryMethod =
     new VirtualMethod<QueryParser>(QueryParser.class, "getFieldQuery", String.class, String.class);
   /** @deprecated remove when getFieldQuery is removed */
+  @Deprecated
   private static final VirtualMethod<QueryParser> getFieldQueryWithQuotedMethod =
     new VirtualMethod<QueryParser>(QueryParser.class, "getFieldQuery", String.class, String.class, boolean.class);
   /** @deprecated remove when getFieldQuery is removed */
+  @Deprecated
   private final boolean hasNewAPI =
     VirtualMethod.compareImplementationDistance(getClass(),
         getFieldQueryWithQuotedMethod, getFieldQueryMethod) >= 0; // its ok for both to be overridden
@@ -269,7 +272,7 @@ public class QueryParser implements QueryParserConstants {
 
   /**
    * Set the minimum similarity for fuzzy queries.
-   * Default is 0.5f.
+   * Default is 2f.
    */
   public void setFuzzyMinSim(float fuzzyMinSim) {
       this.fuzzyMinSim = fuzzyMinSim;
@@ -864,7 +867,7 @@ public class QueryParser implements QueryParserConstants {
 
   /**
    * Builds a new RegexpQuery instance
-   * @param prefix Regexp term
+   * @param regexp Regexp term
    * @return new RegexpQuery instance
    */
   protected Query newRegexpQuery(Term regexp) {
@@ -1446,8 +1449,10 @@ public class QueryParser implements QueryParserConstants {
           try {
             fms = Float.valueOf(fuzzySlop.image.substring(1)).floatValue();
           } catch (Exception ignored) { }
-         if(fms < 0.0f || fms > 1.0f){
+         if(fms < 0.0f){
            {if (true) throw new ParseException("Minimum similarity for a FuzzyQuery has to be between 0.0f and 1.0f !");}
+         } else if (fms >= 1.0f && fms != (int) fms) {
+           {if (true) throw new ParseException("Fractional edit distances are not allowed!");}
          }
          q = getFuzzyQuery(field, termImage,fms);
        } else {
@@ -1620,12 +1625,6 @@ public class QueryParser implements QueryParserConstants {
     finally { jj_save(0, xla); }
   }
 
-  private boolean jj_3R_2() {
-    if (jj_scan_token(TERM)) return true;
-    if (jj_scan_token(COLON)) return true;
-    return false;
-  }
-
   private boolean jj_3_1() {
     Token xsp;
     xsp = jj_scanpos;
@@ -1638,6 +1637,12 @@ public class QueryParser implements QueryParserConstants {
 
   private boolean jj_3R_3() {
     if (jj_scan_token(STAR)) return true;
+    if (jj_scan_token(COLON)) return true;
+    return false;
+  }
+
+  private boolean jj_3R_2() {
+    if (jj_scan_token(TERM)) return true;
     if (jj_scan_token(COLON)) return true;
     return false;
   }
