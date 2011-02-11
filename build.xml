@@ -7,9 +7,9 @@
     The ASF licenses this file to You under the Apache License, Version 2.0
     the "License"); you may not use this file except in compliance with
     the License.  You may obtain a copy of the License at
- 
+
         http://www.apache.org/licenses/LICENSE-2.0
- 
+
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -39,7 +39,7 @@
   </target>
 
   <property name="version" value="4.0-SNAPSHOT"/>
-  <target name="get-maven-poms" 
+  <target name="get-maven-poms"
           description="Copy Maven POMs from dev-tools/maven/ to their target locations">
     <copy todir="." overwrite="true">
       <fileset dir="${basedir}/dev-tools/maven"/>
@@ -67,8 +67,12 @@
   <target name="eclipse" description="Setup Eclipse configuration">
     <copy file="dev-tools/eclipse/dot.classpath" tofile=".classpath" overwrite="true"/>
     <mkdir dir=".settings"/>
-    <copy file="dev-tools/eclipse/resources.prefs" 
+    <copy file="dev-tools/eclipse/resources.prefs"
           tofile=".settings/org.eclipse.core.resources.prefs" overwrite="true"/>
+    <copy file="dev-tools/eclipse/java-core.prefs"
+          tofile=".settings/org.eclipse.jdt.core.prefs" overwrite="true"/>
+    <copy file="dev-tools/eclipse/java-ui.prefs"
+          tofile=".settings/org.eclipse.jdt.ui.prefs" overwrite="true"/>
     <echo>Running Lucene contrib db/bdb-je task 'get-je-jar' ...</echo>
     <subant target="get-je-jar">
       <fileset dir="lucene/contrib/db/bdb-je" includes="build.xml" />
@@ -91,7 +95,7 @@
                                finish-idea-setup-mac,
                                finish-idea-setup-unix"
           description="Setup IntelliJ IDEA configuration files"/>
-  <target name="copy-idea-files"> 
+  <target name="copy-idea-files">
     <copy todir=".">
       <fileset dir="dev-tools/idea">
         <exclude name="Intellij-Lucene-Codestyle.xml"/>
@@ -147,8 +151,8 @@
       To complete IntelliJ IDEA setup, you must manually configure
       Project Structure | Project | Project SDK.
     </echo>
-  </target> 
-  <target name="clean-idea" 
+  </target>
+  <target name="clean-idea"
           description="Removes all IntelliJ IDEA configuration files">
     <delete dir=".idea" failonerror="true"/>
     <delete failonerror="true">
