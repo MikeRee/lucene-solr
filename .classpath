@@ -27,5 +27,6 @@
 	<classpathentry kind="lib" path="solr/lib/commons-codec-1.4.jar"/>
 	<classpathentry kind="lib" path="solr/lib/velocity-tools-2.0.jar"/>
 	<classpathentry kind="lib" path="solr/lib/commons-fileupload-1.2.1.jar"/>
+	<classpathentry kind="lib" path="solr/lib/zookeeper-3.3.1.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
