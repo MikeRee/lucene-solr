@@ -22,15 +22,18 @@ import java.io.IOException;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.FieldNormModifier;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.MultiNorms;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Similarity;
+import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -44,19 +47,19 @@ public class TestLengthNormModifier extends LuceneTestCase {
     public Directory store;
 
     /** inverts the normal notion of lengthNorm */
-    public static Similarity s = new DefaultSimilarity() {
-	    @Override
-	    public float lengthNorm(String fieldName, int numTokens) {
-		return numTokens;
-	    }
-	};
+    public static SimilarityProvider s = new DefaultSimilarity() {
+        @Override
+        public float computeNorm(String fieldName, FieldInvertState state) {
+          return state.getBoost() * (discountOverlaps ? state.getLength() - state.getNumOverlap() : state.getLength());
+        }
+      };
     
     @Override
     public void setUp() throws Exception {
       super.setUp();
       store = newDirectory();
 	IndexWriter writer = new IndexWriter(store, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer()));
+                                                                         TEST_VERSION_CURRENT, new MockAnalyzer()).setMergePolicy(newInOrderLogMergePolicy()));
 	
 	for (int i = 0; i < NUM_DOCS; i++) {
 	    Document d = new Document();
@@ -94,7 +97,7 @@ public class TestLengthNormModifier extends LuceneTestCase {
     public void testFieldWithNoNorm() throws Exception {
 
 	IndexReader r = IndexReader.open(store, false);
-	byte[] norms = r.norms("nonorm");
+	byte[] norms = MultiNorms.norms(r, "nonorm");
 
 	// sanity check, norms should all be 1
 	assertTrue("Whoops we have norms?", !r.hasNorms("nonorm"));
@@ -112,7 +115,7 @@ public class TestLengthNormModifier extends LuceneTestCase {
 	// nothing should have changed
 	r = IndexReader.open(store, false);
 	
-	norms = r.norms("nonorm");
+	norms = MultiNorms.norms(r, "nonorm");
 	assertTrue("Whoops we have norms?", !r.hasNorms("nonorm"));
   assertNull(norms);
 
@@ -137,8 +140,8 @@ public class TestLengthNormModifier extends LuceneTestCase {
       scores[doc + docBase] = scorer.score();
     }
     @Override
-    public void setNextReader(IndexReader reader, int docBase) {
-      this.docBase = docBase;
+    public void setNextReader(AtomicReaderContext context) {
+      docBase = context.docBase;
     }
     @Override
     public void setScorer(Scorer scorer) throws IOException {
@@ -160,12 +163,12 @@ public class TestLengthNormModifier extends LuceneTestCase {
 	}
 
 	// override the norms to be inverted
-	Similarity s = new DefaultSimilarity() {
-		@Override
-		public float lengthNorm(String fieldName, int numTokens) {
-		    return numTokens;
-		}
-	    };
+	SimilarityProvider s = new DefaultSimilarity() {
+            @Override
+            public float computeNorm(String fieldName, FieldInvertState state) {
+              return state.getBoost() * (discountOverlaps ? state.getLength() - state.getNumOverlap() : state.getLength());
+            }
+          };
 	FieldNormModifier fnm = new FieldNormModifier(store, s);
 	fnm.reSetNorms("field");
 
@@ -179,8 +182,8 @@ public class TestLengthNormModifier extends LuceneTestCase {
         scores[doc + docBase] = scorer.score();
       }
       @Override
-      public void setNextReader(IndexReader reader, int docBase) {
-        this.docBase = docBase;
+      public void setNextReader(AtomicReaderContext context) {
+        docBase = context.docBase;
       }
       @Override
       public void setScorer(Scorer scorer) throws IOException {

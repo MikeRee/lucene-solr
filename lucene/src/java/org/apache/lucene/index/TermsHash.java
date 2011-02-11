@@ -63,17 +63,10 @@ final class TermsHash extends InvertedDocConsumer {
   }
 
   @Override
-  synchronized public void abort() {
+  public void abort() {
     consumer.abort();
     if (nextTermsHash != null)
       nextTermsHash.abort();
-  }
-
-  @Override
-  synchronized void closeDocStore(SegmentWriteState state) throws IOException {
-    consumer.closeDocStore(state);
-    if (nextTermsHash != null)
-      nextTermsHash.closeDocStore(state);
   }
 
   @Override

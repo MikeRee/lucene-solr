@@ -25,9 +25,9 @@ import java.util.regex.Pattern;
 
 /**
  * <p>
- * An EntityProcessor instance which provides support for reading from
- * databases. It is used in conjunction with JdbcDataSource. This is the default
- * EntityProcessor if none is specified explicitly in data-config.xml
+ * An {@link EntityProcessor} instance which provides support for reading from
+ * databases. It is used in conjunction with {@link JdbcDataSource}. This is the default
+ * {@link EntityProcessor} if none is specified explicitly in data-config.xml
  * </p>
  * <p/>
  * <p>
@@ -46,6 +46,7 @@ public class SqlEntityProcessor extends EntityProcessorBase {
 
   protected DataSource<Iterator<Map<String, Object>>> dataSource;
 
+  @Override
   @SuppressWarnings("unchecked")
   public void init(Context context) {
     super.init(context);
@@ -65,6 +66,7 @@ public class SqlEntityProcessor extends EntityProcessorBase {
     }
   }
 
+  @Override
   public Map<String, Object> nextRow() {    
     if (rowIterator == null) {
       String q = getQuery();
@@ -73,6 +75,7 @@ public class SqlEntityProcessor extends EntityProcessorBase {
     return getNext();
   }
 
+  @Override
   public Map<String, Object> nextModifiedRowKey() {
     if (rowIterator == null) {
       String deltaQuery = context.getEntityAttribute(DELTA_QUERY);
@@ -83,6 +86,7 @@ public class SqlEntityProcessor extends EntityProcessorBase {
     return getNext();
   }
 
+  @Override
   public Map<String, Object> nextDeletedRowKey() {
     if (rowIterator == null) {
       String deletedPkQuery = context.getEntityAttribute(DEL_PK_QUERY);
@@ -93,6 +97,7 @@ public class SqlEntityProcessor extends EntityProcessorBase {
     return getNext();
   }
 
+  @Override
   public Map<String, Object> nextModifiedParentRowKey() {
     if (rowIterator == null) {
       String parentDeltaQuery = context.getEntityAttribute(PARENT_DELTA_QUERY);

@@ -20,16 +20,12 @@ package org.apache.solr.spelling.suggest;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.params.SpellingParams;
-import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.spelling.suggest.Lookup.LookupResult;
 import org.apache.solr.spelling.suggest.jaspell.JaspellLookup;
 import org.apache.solr.spelling.suggest.tst.TSTLookup;
-import org.apache.solr.util.RefCounted;
 import org.apache.solr.util.TermFreqIterator;
-import org.apache.solr.util.TestHarness;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import static org.junit.Assert.*;
 
 import java.util.HashMap;
 import java.util.List;
@@ -65,6 +61,20 @@ public class SuggesterTest extends SolrTestCaseJ4 {
         "//lst[@name='spellcheck']/lst[@name='suggestions']/lst[@name='ac']/arr[@name='suggestion']/str[1][.='acquire']",
         "//lst[@name='spellcheck']/lst[@name='suggestions']/lst[@name='ac']/arr[@name='suggestion']/str[2][.='accommodate']"
     );
+  }
+  
+  @Test
+  public void testReload() throws Exception {
+    addDocs();
+    assertU(commit());
+    assertQ(req("qt","/suggest", "q","ac", SpellingParams.SPELLCHECK_COUNT, "2", SpellingParams.SPELLCHECK_ONLY_MORE_POPULAR, "true"),
+        "//lst[@name='spellcheck']/lst[@name='suggestions']/lst[@name='ac']/int[@name='numFound'][.='2']");
+    assertU(adoc("id", "4",
+        "text", "actually"
+       ));
+    assertU(commit());
+    assertQ(req("qt","/suggest", "q","ac", SpellingParams.SPELLCHECK_COUNT, "2", SpellingParams.SPELLCHECK_ONLY_MORE_POPULAR, "true"),
+    "//lst[@name='spellcheck']/lst[@name='suggestions']/lst[@name='ac']/int[@name='numFound'][.='2']");
   }
 
   

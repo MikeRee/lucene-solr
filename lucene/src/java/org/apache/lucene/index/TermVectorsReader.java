@@ -77,38 +77,30 @@ class TermVectorsReader implements Cloneable {
 
     try {
       String idxName = IndexFileNames.segmentFileName(segment, "", IndexFileNames.VECTORS_INDEX_EXTENSION);
-      if (d.fileExists(idxName)) {
-        tvx = d.openInput(idxName, readBufferSize);
-        format = checkValidFormat(tvx, idxName);
-        String fn = IndexFileNames.segmentFileName(segment, "", IndexFileNames.VECTORS_DOCUMENTS_EXTENSION);
-        tvd = d.openInput(fn, readBufferSize);
-        final int tvdFormat = checkValidFormat(tvd, fn);
-        fn = IndexFileNames.segmentFileName(segment, "", IndexFileNames.VECTORS_FIELDS_EXTENSION);
-        tvf = d.openInput(fn, readBufferSize);
-        final int tvfFormat = checkValidFormat(tvf, fn);
+      tvx = d.openInput(idxName, readBufferSize);
+      format = checkValidFormat(tvx, idxName);
+      String fn = IndexFileNames.segmentFileName(segment, "", IndexFileNames.VECTORS_DOCUMENTS_EXTENSION);
+      tvd = d.openInput(fn, readBufferSize);
+      final int tvdFormat = checkValidFormat(tvd, fn);
+      fn = IndexFileNames.segmentFileName(segment, "", IndexFileNames.VECTORS_FIELDS_EXTENSION);
+      tvf = d.openInput(fn, readBufferSize);
+      final int tvfFormat = checkValidFormat(tvf, fn);
 
-        assert format == tvdFormat;
-        assert format == tvfFormat;
+      assert format == tvdFormat;
+      assert format == tvfFormat;
 
-        assert (tvx.length()-FORMAT_SIZE) % 16 == 0;
-        numTotalDocs = (int) (tvx.length() >> 4);
+      numTotalDocs = (int) (tvx.length() >> 4);
 
-        if (-1 == docStoreOffset) {
-          this.docStoreOffset = 0;
-          this.size = numTotalDocs;
-          assert size == 0 || numTotalDocs == size;
-        } else {
-          this.docStoreOffset = docStoreOffset;
-          this.size = size;
-          // Verify the file is long enough to hold all of our
-          // docs
-          assert numTotalDocs >= size + docStoreOffset: "numTotalDocs=" + numTotalDocs + " size=" + size + " docStoreOffset=" + docStoreOffset;
-        }
+      if (-1 == docStoreOffset) {
+        this.docStoreOffset = 0;
+        this.size = numTotalDocs;
+        assert size == 0 || numTotalDocs == size;
       } else {
-        // TODO: understand why FieldInfos.hasVectors() can
-        // return true yet the term vectors files don't
-        // exist...
-        format = 0;
+        this.docStoreOffset = docStoreOffset;
+        this.size = size;
+        // Verify the file is long enough to hold all of our
+        // docs
+        assert numTotalDocs >= size + docStoreOffset: "numTotalDocs=" + numTotalDocs + " size=" + size + " docStoreOffset=" + docStoreOffset;
       }
 
       this.fieldInfos = fieldInfos;

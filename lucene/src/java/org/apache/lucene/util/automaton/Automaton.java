@@ -29,7 +29,6 @@
 
 package org.apache.lucene.util.automaton;
 
-import java.io.Serializable;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collection;
@@ -66,9 +65,16 @@ import org.apache.lucene.util.RamUsageEstimator;
  * assumed by the built-in automata operations.
  * 
  * <p>
+ * <p>
+ * Note: This class has internal mutable state and is not thread safe. It is 
+ * the caller's responsibility to ensure any necessary synchronization if you
+ * wish to use the same Automaton from multiple threads. In general it is instead
+ * recommended to use a {@link RunAutomaton} for multithreaded matching: it is immutable, 
+ * thread safe, and much faster.  
+ * </p>
  * @lucene.experimental
  */
-public class Automaton implements Serializable, Cloneable {
+public class Automaton implements Cloneable {
   
   /**
    * Minimize using Hopcroft's O(n log n) algorithm. This is regarded as one of
@@ -281,7 +287,7 @@ public class Automaton implements Serializable, Cloneable {
             worklist.add(t.to);
             t.to.number = upto;
             if (upto == numberedStates.length) {
-              final State[] newArray = new State[ArrayUtil.oversize(1+upto, RamUsageEstimator.NUM_BYTES_OBJ_REF)];
+              final State[] newArray = new State[ArrayUtil.oversize(1+upto, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
               System.arraycopy(numberedStates, 0, newArray, 0, upto);
               numberedStates = newArray;
             }
@@ -487,7 +493,7 @@ public class Automaton implements Serializable, Cloneable {
    * Returns a sorted array of transitions for each state (and sets state
    * numbers).
    */
-  Transition[][] getSortedTransitions() {
+  public Transition[][] getSortedTransitions() {
     final State[] states = getNumberedStates();
     Transition[][] transitions = new Transition[states.length][];
     for (State s : states) {

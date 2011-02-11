@@ -17,16 +17,6 @@
 
 package org.apache.solr.search;
 
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.core.SolrCore;
-
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
-import java.io.IOException;
-import java.net.URL;
-
 /**
  * Common base class of reusable functionality for SolrCaches
  */
@@ -65,6 +55,7 @@ public abstract class SolrCacheBase {
         throw new RuntimeException("Can't parse autoWarm value: " + configValue, e);
       }
     }
+    @Override
     public String toString() {
       return strVal;
     }

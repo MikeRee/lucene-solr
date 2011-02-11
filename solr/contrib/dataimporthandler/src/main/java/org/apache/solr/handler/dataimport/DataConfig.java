@@ -175,6 +175,10 @@ public class DataConfig {
     public String getPk(){
       return pk == null ? pkMappingFromSchema : pk;
     }
+
+    public String getSchemaPk(){
+      return pkMappingFromSchema != null ? pkMappingFromSchema : pk;
+    }
   }
 
   public static class Script {
@@ -210,6 +214,7 @@ public class DataConfig {
 
 
     public Map<String, String> allAttributes = new HashMap<String, String>() {
+      @Override
       public String put(String key, String value) {
         if (super.containsKey(key))
           return super.get(key);

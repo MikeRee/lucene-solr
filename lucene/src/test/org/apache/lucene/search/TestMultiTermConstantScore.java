@@ -22,14 +22,13 @@ import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.text.Collator;
@@ -152,7 +151,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
   public void testEqualScores() throws IOException {
     // NOTE: uses index build in *this* setUp
 
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     ScoreDoc[] result;
 
@@ -175,13 +174,14 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
           result[i].score);
     }
 
+    search.close();
   }
 
   @Test
   public void testBoost() throws IOException {
     // NOTE: uses index build in *this* setUp
 
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     // test for correct application of query normalization
     // must use a non score normalizing method for this.
@@ -199,8 +199,8 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
         assertEquals("score for doc " + (doc + base) + " was not correct", 1.0f, scorer.score());
       }
       @Override
-      public void setNextReader(IndexReader reader, int docBase) {
-        base = docBase;
+      public void setNextReader(AtomicReaderContext context) {
+        base = context.docBase;
       }
       @Override
       public boolean acceptsDocsOutOfOrder() {
@@ -247,13 +247,14 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     Assert.assertEquals(0, hits[0].doc);
     Assert.assertEquals(1, hits[1].doc);
     assertTrue(hits[0].score > hits[1].score);
+    search.close();
   }
 
   @Test
   public void testBooleanOrderUnAffected() throws IOException {
     // NOTE: uses index build in *this* setUp
 
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     // first do a regular TermRangeQuery which uses term expansion so
     // docs with more terms in range get higher scores
@@ -278,6 +279,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
           actual[i].doc);
     }
 
+    search.close();
   }
 
   @Test
@@ -285,7 +287,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     // NOTE: uses index build in *super* setUp
 
     IndexReader reader = signedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     int medId = ((maxId - minId) / 2);
 
@@ -406,6 +408,8 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
 
     result = search.search(csrq("id", medIP, medIP, T, T, MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT), null, numDocs).scoreDocs;
     assertEquals("med,med,T,T", 1, result.length);
+    
+    search.close();
   }
 
   @Test
@@ -413,7 +417,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     // NOTE: uses index build in *super* setUp
 
     IndexReader reader = signedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     int medId = ((maxId - minId) / 2);
 
@@ -490,6 +494,8 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
 
     result = search.search(csrq("id", medIP, medIP, T, T, c), null, numDocs).scoreDocs;
     assertEquals("med,med,T,T,c", 1, result.length);
+    
+    search.close();
   }
 
   @Test
@@ -497,7 +503,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     // NOTE: uses index build in *super* setUp
 
     IndexReader reader = signedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     String minRP = pad(signedIndexDir.minR);
     String maxRP = pad(signedIndexDir.maxR);
@@ -553,6 +559,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     result = search.search(csrq("rand", maxRP, null, T, F), null, numDocs).scoreDocs;
     assertEquals("max,nul,T,T", 1, result.length);
 
+    search.close();
   }
 
   @Test
@@ -561,7 +568,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
 
     // using the unsigned index because collation seems to ignore hyphens
     IndexReader reader = unsignedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     String minRP = pad(unsignedIndexDir.minR);
     String maxRP = pad(unsignedIndexDir.maxR);
@@ -618,6 +625,8 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     assertEquals("max,max,T,T,c", 1, result.length);
     result = search.search(csrq("rand", maxRP, null, T, F, c), null, numDocs).scoreDocs;
     assertEquals("max,nul,T,T,c", 1, result.length);
+    
+    search.close();
   }
 
   @Test
@@ -637,7 +646,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     IndexReader reader = writer.getReader();
     writer.close();
 
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     // Neither Java 1.4.2 nor 1.5.0 has Farsi Locale collation available in
     // RuleBasedCollator. However, the Arabic Locale seems to order the Farsi
@@ -682,7 +691,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     IndexReader reader = writer.getReader();
     writer.close();
 
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
 
     Collator c = Collator.getInstance(new Locale("da", "dk"));
 

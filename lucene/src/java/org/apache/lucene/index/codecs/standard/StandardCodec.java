@@ -31,10 +31,10 @@ import org.apache.lucene.index.codecs.PostingsWriterBase;
 import org.apache.lucene.index.codecs.PostingsReaderBase;
 import org.apache.lucene.index.codecs.TermsIndexWriterBase;
 import org.apache.lucene.index.codecs.TermsIndexReaderBase;
-import org.apache.lucene.index.codecs.FixedGapTermsIndexWriter;
-import org.apache.lucene.index.codecs.FixedGapTermsIndexReader;
-import org.apache.lucene.index.codecs.PrefixCodedTermsWriter;
-import org.apache.lucene.index.codecs.PrefixCodedTermsReader;
+import org.apache.lucene.index.codecs.VariableGapTermsIndexWriter;
+import org.apache.lucene.index.codecs.VariableGapTermsIndexReader;
+import org.apache.lucene.index.codecs.BlockTermsWriter;
+import org.apache.lucene.index.codecs.BlockTermsReader;
 import org.apache.lucene.store.Directory;
 
 /** Default codec. 
@@ -56,7 +56,7 @@ public class StandardCodec extends Codec {
     TermsIndexWriterBase indexWriter;
     boolean success = false;
     try {
-      indexWriter = new FixedGapTermsIndexWriter(state);
+      indexWriter = new VariableGapTermsIndexWriter(state, new VariableGapTermsIndexWriter.EveryNTermSelector(state.termIndexInterval));
       success = true;
     } finally {
       if (!success) {
@@ -66,7 +66,7 @@ public class StandardCodec extends Codec {
 
     success = false;
     try {
-      FieldsConsumer ret = new PrefixCodedTermsWriter(indexWriter, state, docs, BytesRef.getUTF8SortedAsUnicodeComparator());
+      FieldsConsumer ret = new BlockTermsWriter(indexWriter, state, docs, BytesRef.getUTF8SortedAsUnicodeComparator());
       success = true;
       return ret;
     } finally {
@@ -84,16 +84,16 @@ public class StandardCodec extends Codec {
 
   @Override
   public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
-    PostingsReaderBase postings = new StandardPostingsReader(state.dir, state.segmentInfo, state.readBufferSize);
+    PostingsReaderBase postings = new StandardPostingsReader(state.dir, state.segmentInfo, state.readBufferSize, state.codecId);
     TermsIndexReaderBase indexReader;
 
     boolean success = false;
     try {
-      indexReader = new FixedGapTermsIndexReader(state.dir,
-                                                       state.fieldInfos,
-                                                       state.segmentInfo.name,
-                                                       state.termsIndexDivisor,
-                                                       BytesRef.getUTF8SortedAsUnicodeComparator());
+      indexReader = new VariableGapTermsIndexReader(state.dir,
+                                                    state.fieldInfos,
+                                                    state.segmentInfo.name,
+                                                    state.termsIndexDivisor,
+                                                    state.codecId);
       success = true;
     } finally {
       if (!success) {
@@ -103,14 +103,15 @@ public class StandardCodec extends Codec {
 
     success = false;
     try {
-      FieldsProducer ret = new PrefixCodedTermsReader(indexReader,
-                                                       state.dir,
-                                                       state.fieldInfos,
-                                                       state.segmentInfo.name,
-                                                       postings,
-                                                       state.readBufferSize,
-                                                       BytesRef.getUTF8SortedAsUnicodeComparator(),
-                                                       TERMS_CACHE_SIZE);
+      FieldsProducer ret = new BlockTermsReader(indexReader,
+                                                state.dir,
+                                                state.fieldInfos,
+                                                state.segmentInfo.name,
+                                                postings,
+                                                state.readBufferSize,
+                                                BytesRef.getUTF8SortedAsUnicodeComparator(),
+                                                TERMS_CACHE_SIZE,
+                                                state.codecId);
       success = true;
       return ret;
     } finally {
@@ -131,10 +132,10 @@ public class StandardCodec extends Codec {
   static final String PROX_EXTENSION = "prx";
 
   @Override
-  public void files(Directory dir, SegmentInfo segmentInfo, Set<String> files) throws IOException {
-    StandardPostingsReader.files(dir, segmentInfo, files);
-    PrefixCodedTermsReader.files(dir, segmentInfo, files);
-    FixedGapTermsIndexReader.files(dir, segmentInfo, files);
+  public void files(Directory dir, SegmentInfo segmentInfo, String id, Set<String> files) throws IOException {
+    StandardPostingsReader.files(dir, segmentInfo, id, files);
+    BlockTermsReader.files(dir, segmentInfo, id, files);
+    VariableGapTermsIndexReader.files(dir, segmentInfo, id, files);
   }
 
   @Override
@@ -145,7 +146,7 @@ public class StandardCodec extends Codec {
   public static void getStandardExtensions(Set<String> extensions) {
     extensions.add(FREQ_EXTENSION);
     extensions.add(PROX_EXTENSION);
-    PrefixCodedTermsReader.getExtensions(extensions);
-    FixedGapTermsIndexReader.getIndexExtensions(extensions);
+    BlockTermsReader.getExtensions(extensions);
+    VariableGapTermsIndexReader.getIndexExtensions(extensions);
   }
 }

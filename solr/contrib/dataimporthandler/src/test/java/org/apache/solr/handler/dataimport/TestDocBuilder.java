@@ -33,6 +33,7 @@ import java.util.*;
  */
 public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
 
+  @Override
   @After
   public void tearDown() throws Exception {
     MockDataSource.clearCache();
@@ -60,6 +61,7 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
     di.runCmd(rp, swi);
     assertEquals(Boolean.TRUE, swi.deleteAllCalled);
     assertEquals(Boolean.TRUE, swi.commitCalled);
+    assertEquals(Boolean.TRUE, swi.finishCalled);
     assertEquals(0, swi.docs.size());
     assertEquals(1, di.getDocBuilder().importStatistics.queryCount.get());
     assertEquals(0, di.getDocBuilder().importStatistics.docCount.get());
@@ -81,6 +83,7 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
     di.runCmd(rp, swi);
     assertEquals(Boolean.FALSE, swi.deleteAllCalled);
     assertEquals(Boolean.FALSE, swi.commitCalled);
+    assertEquals(Boolean.TRUE, swi.finishCalled);
     assertEquals(0, swi.docs.size());
     assertEquals(1, di.getDocBuilder().importStatistics.queryCount.get());
     assertEquals(0, di.getDocBuilder().importStatistics.docCount.get());
@@ -104,6 +107,7 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
     di.runCmd(rp, swi);
     assertEquals(Boolean.TRUE, swi.deleteAllCalled);
     assertEquals(Boolean.TRUE, swi.commitCalled);
+    assertEquals(Boolean.TRUE, swi.finishCalled);
     assertEquals(1, swi.docs.size());
     assertEquals(1, di.getDocBuilder().importStatistics.queryCount.get());
     assertEquals(1, di.getDocBuilder().importStatistics.docCount.get());
@@ -134,6 +138,7 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
     di.runCmd(rp, swi);
     assertEquals(Boolean.FALSE, swi.deleteAllCalled);
     assertEquals(Boolean.TRUE, swi.commitCalled);
+    assertEquals(Boolean.TRUE, swi.finishCalled);
     assertEquals(1, swi.docs.size());
     assertEquals(1, di.getDocBuilder().importStatistics.queryCount.get());
     assertEquals(1, di.getDocBuilder().importStatistics.docCount.get());
@@ -168,6 +173,7 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
     di.runCmd(rp, swi);
     assertEquals(Boolean.TRUE, swi.deleteAllCalled);
     assertEquals(Boolean.TRUE, swi.commitCalled);
+    assertEquals(Boolean.TRUE, swi.finishCalled);
     assertEquals(3, swi.docs.size());
     for (int i = 0; i < l.size(); i++) {
       Map<String, Object> map = (Map<String, Object>) l.get(i);
@@ -189,24 +195,35 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
 
     Boolean commitCalled = Boolean.FALSE;
 
+    Boolean finishCalled = Boolean.FALSE;
+
     public SolrWriterImpl() {
-      super(null, ".");
+      super(null, ".",null);
     }
 
+    @Override
     public boolean upload(SolrInputDocument doc) {
       return docs.add(doc);
     }
 
+    @Override
     public void log(int event, String name, Object row) {
       // Do nothing
     }
 
+    @Override
     public void doDeleteAll() {
       deleteAllCalled = Boolean.TRUE;
     }
 
+    @Override
     public void commit(boolean b) {
       commitCalled = Boolean.TRUE;
+    }
+    
+    @Override
+    public void finish() {
+      finishCalled = Boolean.TRUE;
     }
   }
 

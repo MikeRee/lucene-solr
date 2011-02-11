@@ -17,13 +17,6 @@
 
 package org.apache.solr.search.function;
 
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.search.Searcher;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Map;
-
 /**
  * <code>SumFloatFunction</code> returns the sum of it's components.
  */
@@ -37,6 +30,7 @@ public class SumFloatFunction extends MultiFloatFunction {
     return "sum";
   }
 
+  @Override
   protected float func(int doc, DocValues[] valsArr) {
     float val = 0.0f;
     for (DocValues vals : valsArr) {

@@ -19,14 +19,15 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.Term;
+import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.index.SerialMergeScheduler;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.SerialMergeScheduler;
 import org.apache.lucene.index.SlowMultiReaderWrapper;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.OpenBitSet;
@@ -39,21 +40,21 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random, dir);
     writer.close();
 
-    IndexReader reader = IndexReader.open(dir, true);
-
+    IndexReader reader = new SlowMultiReaderWrapper(IndexReader.open(dir, true));
+    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
     MockFilter filter = new MockFilter();
     CachingWrapperFilter cacher = new CachingWrapperFilter(filter);
 
     // first time, nested filter is called
-    cacher.getDocIdSet(reader);
+    cacher.getDocIdSet(context);
     assertTrue("first time", filter.wasCalled());
 
     // make sure no exception if cache is holding the wrong docIdSet
-    cacher.getDocIdSet(reader);
+    cacher.getDocIdSet(context);
 
     // second time, nested filter should not be called
     filter.clear();
-    cacher.getDocIdSet(reader);
+    cacher.getDocIdSet(context);
     assertFalse("second time", filter.wasCalled());
 
     reader.close();
@@ -65,18 +66,19 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random, dir);
     writer.close();
 
-    IndexReader reader = IndexReader.open(dir, true);
+    IndexReader reader = new SlowMultiReaderWrapper(IndexReader.open(dir, true));
+    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
 
     final Filter filter = new Filter() {
       @Override
-      public DocIdSet getDocIdSet(IndexReader reader) {
+      public DocIdSet getDocIdSet(AtomicReaderContext context) {
         return null;
       }
     };
     CachingWrapperFilter cacher = new CachingWrapperFilter(filter);
 
     // the caching filter should return the empty set constant
-    assertSame(DocIdSet.EMPTY_DOCIDSET, cacher.getDocIdSet(reader));
+    assertSame(DocIdSet.EMPTY_DOCIDSET, cacher.getDocIdSet(context));
     
     reader.close();
     dir.close();
@@ -87,11 +89,12 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random, dir);
     writer.close();
 
-    IndexReader reader = IndexReader.open(dir, true);
+    IndexReader reader = new SlowMultiReaderWrapper(IndexReader.open(dir, true));
+    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
 
     final Filter filter = new Filter() {
       @Override
-      public DocIdSet getDocIdSet(IndexReader reader) {
+      public DocIdSet getDocIdSet(AtomicReaderContext context) {
         return new DocIdSet() {
           @Override
           public DocIdSetIterator iterator() {
@@ -103,16 +106,18 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     CachingWrapperFilter cacher = new CachingWrapperFilter(filter);
 
     // the caching filter should return the empty set constant
-    assertSame(DocIdSet.EMPTY_DOCIDSET, cacher.getDocIdSet(reader));
+    assertSame(DocIdSet.EMPTY_DOCIDSET, cacher.getDocIdSet(context));
     
     reader.close();
     dir.close();
   }
   
   private static void assertDocIdSetCacheable(IndexReader reader, Filter filter, boolean shouldCacheable) throws IOException {
+    assertTrue(reader.getTopReaderContext().isAtomic);
+    AtomicReaderContext context = (AtomicReaderContext) reader.getTopReaderContext();
     final CachingWrapperFilter cacher = new CachingWrapperFilter(filter);
-    final DocIdSet originalSet = filter.getDocIdSet(reader);
-    final DocIdSet cachedSet = cacher.getDocIdSet(reader);
+    final DocIdSet originalSet = filter.getDocIdSet(context);
+    final DocIdSet cachedSet = cacher.getDocIdSet(context);
     assertTrue(cachedSet.isCacheable());
     assertEquals(shouldCacheable, originalSet.isCacheable());
     //System.out.println("Original: "+originalSet.getClass().getName()+" -- cached: "+cachedSet.getClass().getName());
@@ -129,19 +134,18 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     writer.addDocument(new Document());
     writer.close();
 
-    IndexReader reader = IndexReader.open(dir, true);
-    IndexReader slowReader = SlowMultiReaderWrapper.wrap(reader);
+    IndexReader reader = new SlowMultiReaderWrapper(IndexReader.open(dir, true));
 
     // not cacheable:
-    assertDocIdSetCacheable(slowReader, new QueryWrapperFilter(new TermQuery(new Term("test","value"))), false);
+    assertDocIdSetCacheable(reader, new QueryWrapperFilter(new TermQuery(new Term("test","value"))), false);
     // returns default empty docidset, always cacheable:
-    assertDocIdSetCacheable(slowReader, NumericRangeFilter.newIntRange("test", Integer.valueOf(10000), Integer.valueOf(-10000), true, true), true);
+    assertDocIdSetCacheable(reader, NumericRangeFilter.newIntRange("test", Integer.valueOf(10000), Integer.valueOf(-10000), true, true), true);
     // is cacheable:
-    assertDocIdSetCacheable(slowReader, FieldCacheRangeFilter.newIntRange("test", Integer.valueOf(10), Integer.valueOf(20), true, true), true);
+    assertDocIdSetCacheable(reader, FieldCacheRangeFilter.newIntRange("test", Integer.valueOf(10), Integer.valueOf(20), true, true), true);
     // a openbitset filter is always cacheable
-    assertDocIdSetCacheable(slowReader, new Filter() {
+    assertDocIdSetCacheable(reader, new Filter() {
       @Override
-      public DocIdSet getDocIdSet(IndexReader reader) {
+      public DocIdSet getDocIdSet(AtomicReaderContext context) {
         return new OpenBitSet();
       }
     }, true);
@@ -152,15 +156,21 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
 
   public void testEnforceDeletions() throws Exception {
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir,
-                                                     newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).setMergeScheduler(new SerialMergeScheduler()));
+    RandomIndexWriter writer = new RandomIndexWriter(
+        random,
+        dir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+            setMergeScheduler(new SerialMergeScheduler()).
+            // asserts below requires no unexpected merges:
+            setMergePolicy(newLogMergePolicy(10))
+    );
 
     // NOTE: cannot use writer.getReader because RIW (on
     // flipping a coin) may give us a newly opened reader,
     // but we use .reopen on this reader below and expect to
     // (must) get an NRT reader:
-    IndexReader reader = IndexReader.open(writer.w);
-    IndexSearcher searcher = new IndexSearcher(reader);
+    IndexReader reader = IndexReader.open(writer.w, true);
+    IndexSearcher searcher = newSearcher(reader);
 
     // add a doc, refresh the reader, and check that its there
     Document doc = new Document();
@@ -168,7 +178,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     writer.addDocument(doc);
 
     reader = refreshReader(reader);
-    searcher = new IndexSearcher(reader);
+    searcher.close();
+    searcher = newSearcher(reader);
 
     TopDocs docs = searcher.search(new MatchAllDocsQuery(), 1);
     assertEquals("Should find a hit...", 1, docs.totalHits);
@@ -188,7 +199,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     writer.deleteDocuments(new Term("id", "1"));
 
     reader = refreshReader(reader);
-    searcher = new IndexSearcher(reader);
+    searcher.close();
+    searcher = newSearcher(reader);
 
     docs = searcher.search(new MatchAllDocsQuery(), filter, 1);
     assertEquals("[query + filter] Should *not* find a hit...", 0, docs.totalHits);
@@ -203,7 +215,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     writer.addDocument(doc);
 
     reader = refreshReader(reader);
-    searcher = new IndexSearcher(reader);
+    searcher.close();
+    searcher = newSearcher(reader);
         
     docs = searcher.search(new MatchAllDocsQuery(), filter, 1);
 
@@ -222,7 +235,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     // that had no change to deletions
     reader = refreshReader(reader);
     assertTrue(reader != oldReader);
-    searcher = new IndexSearcher(reader);
+    searcher.close();
+    searcher = newSearcher(reader);
     int missCount = filter.missCount;
     docs = searcher.search(constantScore, 1);
     assertEquals("[just filter] Should find a hit...", 1, docs.totalHits);
@@ -232,7 +246,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     writer.deleteDocuments(new Term("id", "1"));
 
     reader = refreshReader(reader);
-    searcher = new IndexSearcher(reader);
+    searcher.close();
+    searcher = newSearcher(reader);
 
     missCount = filter.missCount;
     docs = searcher.search(new MatchAllDocsQuery(), filter, 1);
@@ -247,7 +262,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
 
     writer.addDocument(doc);
     reader = refreshReader(reader);
-    searcher = new IndexSearcher(reader);
+    searcher.close();
+    searcher = newSearcher(reader);
         
     docs = searcher.search(new MatchAllDocsQuery(), filter, 1);
     assertEquals("[query + filter] Should find a hit...", 1, docs.totalHits);
@@ -259,7 +275,8 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     writer.deleteDocuments(new Term("id", "1"));
 
     reader = refreshReader(reader);
-    searcher = new IndexSearcher(reader);
+    searcher.close();
+    searcher = newSearcher(reader);
 
     docs = searcher.search(new MatchAllDocsQuery(), filter, 1);
     assertEquals("[query + filter] Should *not* find a hit...", 0, docs.totalHits);
@@ -277,6 +294,7 @@ public class TestCachingWrapperFilter extends LuceneTestCase {
     // entry:
     assertTrue(oldReader != null);
 
+    searcher.close();
     reader.close();
     writer.close();
     dir.close();

@@ -19,22 +19,22 @@ package org.apache.lucene.search.spans;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Weight;
 
 /** Base class for span-based queries. */
 public abstract class SpanQuery extends Query {
   /** Expert: Returns the matches for this query in an index.  Used internally
    * to search for spans. */
-  public abstract Spans getSpans(IndexReader reader) throws IOException;
+  public abstract Spans getSpans(AtomicReaderContext context) throws IOException;
 
   /** Returns the name of the field matched by this query.*/
   public abstract String getField();
 
   @Override
-  public Weight createWeight(Searcher searcher) throws IOException {
+  public Weight createWeight(IndexSearcher searcher) throws IOException {
     return new SpanWeight(this, searcher);
   }
 

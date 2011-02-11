@@ -17,8 +17,8 @@
 
 package org.apache.solr.search.function;
 
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.search.IndexSearcher;
 
 import java.io.IOException;
 import java.util.Map;
@@ -42,28 +42,36 @@ public class LinearFloatFunction extends ValueSource {
     this.intercept = intercept;
   }
   
+  @Override
   public String description() {
     return slope + "*float(" + source.description() + ")+" + intercept;
   }
 
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    final DocValues vals =  source.getValues(context, reader);
+  @Override
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    final DocValues vals =  source.getValues(context, readerContext);
     return new DocValues() {
+      @Override
       public float floatVal(int doc) {
         return vals.floatVal(doc) * slope + intercept;
       }
+      @Override
       public int intVal(int doc) {
         return (int)floatVal(doc);
       }
+      @Override
       public long longVal(int doc) {
         return (long)floatVal(doc);
       }
+      @Override
       public double doubleVal(int doc) {
         return (double)floatVal(doc);
       }
+      @Override
       public String strVal(int doc) {
         return Float.toString(floatVal(doc));
       }
+      @Override
       public String toString(int doc) {
         return slope + "*float(" + vals.toString(doc) + ")+" + intercept;
       }
@@ -71,10 +79,11 @@ public class LinearFloatFunction extends ValueSource {
   }
 
   @Override
-  public void createWeight(Map context, Searcher searcher) throws IOException {
+  public void createWeight(Map context, IndexSearcher searcher) throws IOException {
     source.createWeight(context, searcher);
   }
 
+  @Override
   public int hashCode() {
     int h = Float.floatToIntBits(slope);
     h = (h >>> 2) | (h << 30);
@@ -83,6 +92,7 @@ public class LinearFloatFunction extends ValueSource {
     return h + source.hashCode();
   }
 
+  @Override
   public boolean equals(Object o) {
     if (LinearFloatFunction.class != o.getClass()) return false;
     LinearFloatFunction other = (LinearFloatFunction)o;

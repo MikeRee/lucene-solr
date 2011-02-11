@@ -25,7 +25,6 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.AddUpdateCommand;
-import org.apache.solr.common.params.UpdateParams;
 import org.apache.solr.common.SolrInputDocument;
 
 import java.util.*;
@@ -36,12 +35,16 @@ import java.io.IOException;
  */
 public class TestSearchPerf extends AbstractSolrTestCase {
 
+  @Override
   public String getSchemaFile() { return "schema11.xml"; }
+  @Override
   public String getSolrConfigFile() { return "solrconfig.xml"; }
 
+  @Override
   public void setUp() throws Exception {
     super.setUp();
   }
+  @Override
   public void tearDown() throws Exception {
     super.tearDown();
   }
@@ -50,7 +53,7 @@ public class TestSearchPerf extends AbstractSolrTestCase {
     return String.format("%08d", tnum);
   }
 
-  Random r = new Random(0);
+  Random r = new Random(0);  // specific seed for reproducible perf testing
   int nDocs;
   void createIndex(int nDocs) {
     this.nDocs = nDocs;
@@ -112,7 +115,7 @@ public class TestSearchPerf extends AbstractSolrTestCase {
         doc.addField("t10_100_ws", sb.toString());
       }
 
-      AddUpdateCommand cmd = new AddUpdateCommand();
+      AddUpdateCommand cmd = new AddUpdateCommand(req);
       cmd.solrDoc = doc;
       processor.processAdd(cmd);
     }

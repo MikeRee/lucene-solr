@@ -25,7 +25,8 @@ import org.apache.lucene.analysis.NumericTokenStream; // for javadocs
 import org.apache.lucene.document.NumericField; // for javadocs
 import org.apache.lucene.util.NumericUtils;
 import org.apache.lucene.util.ToStringUtils;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.index.TermsEnum;
 
@@ -74,8 +75,6 @@ import org.apache.lucene.index.TermsEnum;
  * steps of &le;4, this query can be run with one of the
  * BooleanQuery rewrite methods without changing
  * BooleanQuery's default max clause count.
- *
- * @lucene.experimental
  *
  * <br><h3>How it works</h3>
  *
@@ -301,11 +300,11 @@ public final class NumericRangeQuery<T extends Number> extends MultiTermQuery {
   }
 
   @Override @SuppressWarnings("unchecked")
-  protected TermsEnum getTermsEnum(final IndexReader reader) throws IOException {
+  protected TermsEnum getTermsEnum(final Terms terms, AttributeSource atts) throws IOException {
     // very strange: java.lang.Number itsself is not Comparable, but all subclasses used here are
     return (min != null && max != null && ((Comparable<T>) min).compareTo(max) > 0) ?
       TermsEnum.EMPTY :
-      new NumericRangeTermsEnum(reader);
+      new NumericRangeTermsEnum(terms.iterator());
   }
 
   /** Returns <code>true</code> if the lower endpoint is inclusive */
@@ -319,6 +318,9 @@ public final class NumericRangeQuery<T extends Number> extends MultiTermQuery {
 
   /** Returns the upper value of this range query */
   public T getMax() { return max; }
+  
+  /** Returns the precision step. */
+  public int getPrecisionStep() { return precisionStep; }
   
   @Override
   public String toString(final String field) {
@@ -384,8 +386,8 @@ public final class NumericRangeQuery<T extends Number> extends MultiTermQuery {
     private final LinkedList<BytesRef> rangeBounds = new LinkedList<BytesRef>();
     private final Comparator<BytesRef> termComp;
 
-    NumericRangeTermsEnum(final IndexReader reader) throws IOException {
-      super(reader, getField());
+    NumericRangeTermsEnum(final TermsEnum tenum) throws IOException {
+      super(tenum);
       switch (valSize) {
         case 64: {
           // lower

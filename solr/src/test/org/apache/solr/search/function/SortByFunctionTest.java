@@ -24,19 +24,21 @@ import org.apache.solr.util.AbstractSolrTestCase;
  *
  **/
 public class SortByFunctionTest extends AbstractSolrTestCase {
+  @Override
   public String getSchemaFile() {
     return "schema.xml";
   }
 
+  @Override
   public String getSolrConfigFile() {
     return "solrconfig.xml";
   }
 
   public void test() throws Exception {
-    assertU(adoc("id", "1", "x_td", "0", "y_td", "2", "w_td", "25", "z_td", "5", "f_t", "ipod"));
-    assertU(adoc("id", "2", "x_td", "2", "y_td", "2", "w_td", "15", "z_td", "5", "f_t", "ipod ipod ipod ipod ipod"));
-    assertU(adoc("id", "3", "x_td", "3", "y_td", "2", "w_td", "55", "z_td", "5", "f_t", "ipod ipod ipod ipod ipod ipod ipod ipod ipod"));
-    assertU(adoc("id", "4", "x_td", "4", "y_td", "2", "w_td", "45", "z_td", "5", "f_t", "ipod ipod ipod ipod ipod ipod ipod"));
+    assertU(adoc("id", "1", "x_td", "0", "y_td", "2", "w_td1", "25", "z_td", "5", "f_t", "ipod"));
+    assertU(adoc("id", "2", "x_td", "2", "y_td", "2", "w_td1", "15", "z_td", "5", "f_t", "ipod ipod ipod ipod ipod"));
+    assertU(adoc("id", "3", "x_td", "3", "y_td", "2", "w_td1", "55", "z_td", "5", "f_t", "ipod ipod ipod ipod ipod ipod ipod ipod ipod"));
+    assertU(adoc("id", "4", "x_td", "4", "y_td", "2", "w_td1", "45", "z_td", "5", "f_t", "ipod ipod ipod ipod ipod ipod ipod"));
     assertU(commit());
 
     assertQ(req("fl", "*,score", "q", "*:*"),
@@ -80,8 +82,8 @@ public class SortByFunctionTest extends AbstractSolrTestCase {
             "//result/doc[3]/int[@name='id'][.='3']",
             "//result/doc[4]/int[@name='id'][.='4']"
     );
-    //the function is equal, w_td separates
-    assertQ(req("q", "*:*", "fl", "id", "sort", "sum(z_td, y_td) asc, w_td asc"),
+    //the function is equal, w_td1 separates
+    assertQ(req("q", "*:*", "fl", "id", "sort", "sum(z_td, y_td) asc, w_td1 asc"),
             "//*[@numFound='4']",
             "//result/doc[1]/int[@name='id'][.='2']",
             "//result/doc[2]/int[@name='id'][.='1']",
@@ -94,6 +96,7 @@ public class SortByFunctionTest extends AbstractSolrTestCase {
   {
     assertU(adoc("id", "4", "id_s", "D", "links_mfacet", "A", "links_mfacet", "B", "links_mfacet", "C" ) );
     assertU(adoc("id", "3", "id_s", "C", "links_mfacet", "A", "links_mfacet", "B" ) );
+    assertU(commit()); // Make sure it uses two readers
     assertU(adoc("id", "2", "id_s", "B", "links_mfacet", "A" ) );
     assertU(adoc("id", "1", "id_s", "A"  ) );
     assertU(commit());

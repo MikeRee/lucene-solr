@@ -17,6 +17,7 @@
 package org.apache.solr.handler.dataimport;
 
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import org.apache.solr.request.LocalSolrQueryRequest;
@@ -51,6 +52,10 @@ public class TestDocBuilder2 extends AbstractDataImportHandlerTestCase {
     runFullImport(loadDataConfig("single-entity-data-config.xml"));
 
     assertQ(req("id:1"), "//*[@numFound='1']");
+    
+    assertTrue("Update request processor processAdd was not called", TestUpdateRequestProcessor.processAddCalled);
+    assertTrue("Update request processor processCommit was not callled", TestUpdateRequestProcessor.processCommitCalled);
+    assertTrue("Update request processor finish was not called", TestUpdateRequestProcessor.finishCalled);
   }
 
   @Test
@@ -65,6 +70,8 @@ public class TestDocBuilder2 extends AbstractDataImportHandlerTestCase {
     assertQ(req("id:1"), "//*[@numFound='1']");
     assertTrue("Start event listener was not called", StartEventListener.executed);
     assertTrue("End event listener was not called", EndEventListener.executed);
+    assertTrue("Update request processor processAdd was not called", TestUpdateRequestProcessor.processAddCalled);
+    assertTrue("Update request processor finish was not called", TestUpdateRequestProcessor.finishCalled);
   }
 
   @Test
@@ -199,6 +206,9 @@ public class TestDocBuilder2 extends AbstractDataImportHandlerTestCase {
     assertQ(req("id:2"), "//*[@numFound='0']");
     assertQ(req("id:3"), "//*[@numFound='1']");
 
+    assertTrue("Update request processor processDelete was not called", TestUpdateRequestProcessor.processDeleteCalled);
+    assertTrue("Update request processor finish was not called", TestUpdateRequestProcessor.finishCalled);
+    
     MockDataSource.clearCache();
     rows = new ArrayList();
     rows.add(createMap("id", "1", "desc", "one"));
@@ -211,9 +221,14 @@ public class TestDocBuilder2 extends AbstractDataImportHandlerTestCase {
     assertQ(req("id:1"), "//*[@numFound='0']");
     assertQ(req("id:2"), "//*[@numFound='0']");
     assertQ(req("id:3"), "//*[@numFound='1']");
+    
+    assertTrue("Update request processor processDelete was not called", TestUpdateRequestProcessor.processDeleteCalled);
+    assertTrue("Update request processor finish was not called", TestUpdateRequestProcessor.finishCalled);
+    
   }
 
   @Test
+  @Ignore("Known Locale/TZ problems: see https://issues.apache.org/jira/browse/SOLR-1916")
   public void testFileListEntityProcessor_lastIndexTime() throws Exception  {
     File tmpdir = File.createTempFile("test", "tmp", TEMP_DIR);
     tmpdir.delete();
@@ -237,6 +252,7 @@ public class TestDocBuilder2 extends AbstractDataImportHandlerTestCase {
   }
 
   public static class MockTransformer extends Transformer {
+    @Override
     public Object transformRow(Map<String, Object> row, Context context) {
       assertTrue("Context gave incorrect data source", context.getDataSource("mockDs") instanceof MockDataSource2);
       return row;
@@ -244,6 +260,7 @@ public class TestDocBuilder2 extends AbstractDataImportHandlerTestCase {
   }
 
   public static class AddDynamicFieldTransformer extends Transformer  {
+    @Override
     public Object transformRow(Map<String, Object> row, Context context) {
       // Add a dynamic field
       row.put("dynamic_s", "test");

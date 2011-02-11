@@ -16,7 +16,6 @@
  */
 package org.apache.solr;
 
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.solr.core.SolrInfoMBean;
 import org.apache.solr.handler.StandardRequestHandler;
 import org.apache.solr.handler.admin.LukeRequestHandler;
@@ -24,7 +23,7 @@ import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.handler.component.SearchHandler;
 import org.apache.solr.highlight.DefaultSolrHighlighter;
 import org.apache.solr.search.LRUCache;
-
+import org.junit.BeforeClass;
 import java.io.File;
 import java.net.URL;
 import java.util.ArrayList;
@@ -34,8 +33,13 @@ import java.util.List;
 /**
  * A simple test used to increase code coverage for some standard things...
  */
-public class SolrInfoMBeanTest extends LuceneTestCase 
+public class SolrInfoMBeanTest extends SolrTestCaseJ4
 {
+  @BeforeClass
+  public static void beforeClass() throws Exception {
+    initCore("solrconfig.xml","schema.xml");
+  }
+
   /**
    * Gets a list of everything we can find in the classpath and makes sure it has
    * a name, description, etc...
@@ -82,14 +86,15 @@ public class SolrInfoMBeanTest extends LuceneTestCase
     }
     assertTrue( "there are at least 10 SolrInfoMBean that should be found in the classpath, found " + checked, checked > 10 );
   }
-
+  
   private static List<Class> getClassesForPackage(String pckgname) throws Exception {
     ArrayList<File> directories = new ArrayList<File>();
-    ClassLoader cld = Thread.currentThread().getContextClassLoader();
+    ClassLoader cld = h.getCore().getResourceLoader().getClassLoader();
     String path = pckgname.replace('.', '/');
     Enumeration<URL> resources = cld.getResources(path);
     while (resources.hasMoreElements()) {
-      directories.add(new File(resources.nextElement().toURI()));
+      final File f = new File(resources.nextElement().toURI());
+      directories.add(f);
     }
       
     ArrayList<Class> classes = new ArrayList<Class>();
@@ -98,13 +103,12 @@ public class SolrInfoMBeanTest extends LuceneTestCase
         String[] files = directory.list();
         for (String file : files) {
           if (file.endsWith(".class")) {
-            // FIXME: Find the static/sysprop/file leakage here.
-            // If we call Class.forName(ReplicationHandler) here, its test will later fail
-            // when run inside the same JVM (-Dtests.threadspercpu=0), so something is wrong.
-            if (file.contains("ReplicationHandler"))
-              continue;
-            
-             classes.add(Class.forName(pckgname + '.' + file.substring(0, file.length() - 6)));
+             String clazzName = file.substring(0, file.length() - 6);
+             // exclude Test classes that happen to be in these packages.
+             // class.ForName'ing some of them can cause trouble.
+             if (!clazzName.endsWith("Test") && !clazzName.startsWith("Test")) {
+               classes.add(Class.forName(pckgname + '.' + clazzName));
+             }
           }
         }
       }

@@ -19,7 +19,7 @@ package org.apache.lucene.spatial.tier;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.FieldComparatorSource;
@@ -30,8 +30,6 @@ import org.apache.lucene.search.FieldComparatorSource;
  * release.</font>
  */
 public class DistanceFieldComparatorSource extends FieldComparatorSource {
-
-	private static final long serialVersionUID = 1L;
 
 	private DistanceFilter distanceFilter;
 	private DistanceScoreDocLookupComparator dsdlc;
@@ -108,16 +106,14 @@ public class DistanceFieldComparatorSource extends FieldComparatorSource {
 
 		}
 
-		@Override
-                public FieldComparator setNextReader(IndexReader reader, int docBase)
-                  throws IOException {
-			
-			// each reader in a segmented base
-			// has an offset based on the maxDocs of previous readers
-			offset = docBase;
-
-                        return this;
-		}
+    @Override
+    public FieldComparator setNextReader(AtomicReaderContext context)
+        throws IOException {
+      // each reader in a segmented base
+      // has an offset based on the maxDocs of previous readers
+      offset = context.docBase;
+      return this;
+    }
 
 		@Override
 		public Comparable<Double> value(int slot) {

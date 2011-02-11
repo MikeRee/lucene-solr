@@ -25,6 +25,7 @@ import org.apache.lucene.util.LuceneTestCase;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.client.solrj.SolrJettyTestBase;
 import org.mortbay.jetty.Connector;
 import org.mortbay.jetty.Server;
 import org.mortbay.jetty.bio.SocketConnector;
@@ -46,17 +47,17 @@ public class JettyWebappTest extends LuceneTestCase
   public void setUp() throws Exception 
   {
     super.setUp();
-    System.setProperty("solr.solr.home", "../../../example/solr");
+    System.setProperty("solr.solr.home", SolrJettyTestBase.EXAMPLE_HOME);
     
     File dataDir = new File(SolrTestCaseJ4.TEMP_DIR,
         getClass().getName() + "-" + System.currentTimeMillis());
     dataDir.mkdirs();
     System.setProperty("solr.data.dir", dataDir.getCanonicalPath());
-    String path = "../../webapp/web";
+    String path = SolrJettyTestBase.WEBAPP_HOME;
 
     server = new Server(port);
     // insecure: only use for tests!!!!
-    server.setSessionIdManager(new HashSessionIdManager(new Random()));
+    server.setSessionIdManager(new HashSessionIdManager(new Random(random.nextLong())));
     new WebAppContext(server, path, context );
 
     SocketConnector connector = new SocketConnector();
@@ -85,23 +86,23 @@ public class JettyWebappTest extends LuceneTestCase
     // sure they compile ok
     
     String adminPath = "http://localhost:"+port+context+"/";
-    String html = IOUtils.toString( new URL(adminPath).openStream() );
-    assertNotNull( html ); // real error will be an exception
+    byte[] bytes = IOUtils.toByteArray( new URL(adminPath).openStream() );
+    assertNotNull( bytes ); // real error will be an exception
 
     adminPath += "admin/";
-    html = IOUtils.toString( new URL(adminPath).openStream() );
-    assertNotNull( html ); // real error will be an exception
+    bytes = IOUtils.toByteArray( new URL(adminPath).openStream() );
+    assertNotNull( bytes ); // real error will be an exception
 
     // analysis
-    html = IOUtils.toString( new URL(adminPath+"analysis.jsp").openStream() );
-    assertNotNull( html ); // real error will be an exception
+    bytes = IOUtils.toByteArray( new URL(adminPath+"analysis.jsp").openStream() );
+    assertNotNull( bytes ); // real error will be an exception
 
     // schema browser
-    html = IOUtils.toString( new URL(adminPath+"schema.jsp").openStream() );
-    assertNotNull( html ); // real error will be an exception
+    bytes = IOUtils.toByteArray( new URL(adminPath+"schema.jsp").openStream() );
+    assertNotNull( bytes ); // real error will be an exception
 
     // schema browser
-    html = IOUtils.toString( new URL(adminPath+"threaddump.jsp").openStream() );
-    assertNotNull( html ); // real error will be an exception
+    bytes = IOUtils.toByteArray( new URL(adminPath+"threaddump.jsp").openStream() );
+    assertNotNull( bytes ); // real error will be an exception
   }
 }

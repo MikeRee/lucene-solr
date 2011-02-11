@@ -17,13 +17,12 @@
 
 package org.apache.solr.search.function;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.search.MutableValueInt;
 import org.apache.solr.search.MutableValue;
-import org.apache.solr.util.ByteUtils;
 
 import java.io.IOException;
 import java.util.Map;
@@ -46,21 +45,27 @@ class ConstIntDocValues extends DocValues {
     this.parent = parent;
   }
 
+  @Override
   public float floatVal(int doc) {
     return fval;
   }
+  @Override
   public int intVal(int doc) {
     return ival;
   }
+  @Override
   public long longVal(int doc) {
     return lval;
   }
+  @Override
   public double doubleVal(int doc) {
     return dval;
   }
+  @Override
   public String strVal(int doc) {
     return sval;
   }
+  @Override
   public String toString(int doc) {
     return parent.description() + '=' + sval;
   }
@@ -83,21 +88,27 @@ class ConstDoubleDocValues extends DocValues {
     this.parent = parent;
   }
 
+  @Override
   public float floatVal(int doc) {
     return fval;
   }
+  @Override
   public int intVal(int doc) {
     return ival;
   }
+  @Override
   public long longVal(int doc) {
     return lval;
   }
+  @Override
   public double doubleVal(int doc) {
     return dval;
   }
+  @Override
   public String strVal(int doc) {
     return sval;
   }
+  @Override
   public String toString(int doc) {
     return parent.description() + '=' + sval;
   }
@@ -240,23 +251,23 @@ public class DocFreqValueSource extends ValueSource {
   }
 
   @Override
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    Searcher searcher = (Searcher)context.get("searcher");
-    // todo: we need docFreq that takes a BytesRef
-    String strVal = ByteUtils.UTF8toUTF16(indexedBytes);
-    int docfreq = searcher.docFreq(new Term(indexedField, strVal));
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    IndexSearcher searcher = (IndexSearcher)context.get("searcher");
+    int docfreq = searcher.docFreq(new Term(indexedField, indexedBytes));
     return new ConstIntDocValues(docfreq, this);
   }
 
   @Override
-  public void createWeight(Map context, Searcher searcher) throws IOException {
+  public void createWeight(Map context, IndexSearcher searcher) throws IOException {
     context.put("searcher",searcher);
   }
 
+  @Override
   public int hashCode() {
     return getClass().hashCode() + indexedField.hashCode()*29 + indexedBytes.hashCode();
   }
 
+  @Override
   public boolean equals(Object o) {
     if (this.getClass() != o.getClass()) return false;
     DocFreqValueSource other = (DocFreqValueSource)o;

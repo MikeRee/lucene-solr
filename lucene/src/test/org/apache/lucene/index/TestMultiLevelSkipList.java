@@ -50,9 +50,10 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
   
   class CountingRAMDirectory extends MockDirectoryWrapper {
     public CountingRAMDirectory(Directory delegate) {
-      super(delegate);
+      super(random, delegate);
     }
 
+    @Override
     public IndexInput openInput(String fileName) throws IOException {
       IndexInput in = super.openInput(fileName);
       if (fileName.endsWith(".frq"))
@@ -61,6 +62,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     }
   }
   
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();
@@ -69,7 +71,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
 
   public void testSimpleSkip() throws IOException {
     Directory dir = new CountingRAMDirectory(new RAMDirectory());
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new PayloadAnalyzer()).setCodecProvider(_TestUtil.alwaysCodec("Standard")));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new PayloadAnalyzer()).setCodecProvider(_TestUtil.alwaysCodec("Standard")).setMergePolicy(newInOrderLogMergePolicy()));
     Term term = new Term("test", "a");
     for (int i = 0; i < 5000; i++) {
       Document d1 = new Document();
@@ -80,7 +82,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     writer.optimize();
     writer.close();
 
-    IndexReader reader = SegmentReader.getOnlySegmentReader(IndexReader.open(dir));
+    IndexReader reader = getOnlySegmentReader(IndexReader.open(dir));
     
     for (int i = 0; i < 2; i++) {
       counter = 0;

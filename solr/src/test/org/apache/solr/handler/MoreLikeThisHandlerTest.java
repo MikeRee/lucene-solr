@@ -18,9 +18,7 @@
 package org.apache.solr.handler;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-
+import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.params.*;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ContentStreamBase;
@@ -29,22 +27,22 @@ import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequestBase;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.util.AbstractSolrTestCase;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 
 /**
  * TODO -- this needs to actually test the results/query etc
  */
-public class MoreLikeThisHandlerTest extends AbstractSolrTestCase {
+public class MoreLikeThisHandlerTest extends SolrTestCaseJ4 {
 
-  @Override public String getSchemaFile() { return "schema.xml"; }
-  @Override public String getSolrConfigFile() { return "solrconfig.xml"; }
-  @Override public void setUp() throws Exception {
-    super.setUp();
+  @BeforeClass
+  public static void moreLikeThisBeforeClass() throws Exception {
+    initCore("solrconfig.xml", "schema.xml");
     lrf = h.getRequestFactory("standard", 0, 20 );
   }
-  
-  
+
+  @Test
   public void testInterface() throws Exception
   {
     SolrCore core = h.getCore();
@@ -68,6 +66,9 @@ public class MoreLikeThisHandlerTest extends AbstractSolrTestCase {
       mlt.handleRequestBody( req, new SolrQueryResponse() );
     }
     catch( Exception ex ) {} // expected
+    finally {
+      req.close();
+    }
     
     assertU(adoc("id","42","name","Tom Cruise","subword","Top Gun","subword","Risky Business","subword","The Color of Money","subword","Minority Report","subword", "Days of Thunder","subword", "Eyes Wide Shut","subword", "Far and Away", "foo_ti","10"));
     assertU(adoc("id","43","name","Tom Hanks","subword","The Green Mile","subword","Forest Gump","subword","Philadelphia Story","subword","Big","subword","Cast Away", "foo_ti","10"));
@@ -93,7 +94,17 @@ public class MoreLikeThisHandlerTest extends AbstractSolrTestCase {
     assertQ("morelike this - harrison ford",mltreq
         ,"//result/doc[1]/int[@name='id'][.='45']");
 
+    // test MoreLikeThis debug
+    params.set(CommonParams.DEBUG_QUERY, "true");
+    assertQ("morelike this - harrison ford",mltreq
+        ,"//lst[@name='debug']/lst[@name='moreLikeThis']/lst[@name='44']/str[@name='rawMLTQuery']"
+        ,"//lst[@name='debug']/lst[@name='moreLikeThis']/lst[@name='44']/str[@name='boostedMLTQuery']"
+        ,"//lst[@name='debug']/lst[@name='moreLikeThis']/lst[@name='44']/str[@name='realMLTQuery']"
+        ,"//lst[@name='debug']/lst[@name='moreLikeThis']/lst[@name='44']/lst[@name='explain']/str[@name='45']"
+        );
+
     // test that qparser plugins work
+    params.remove(CommonParams.DEBUG_QUERY);
     params.set(CommonParams.Q, "{!field f=id}44");
     assertQ(mltreq
         ,"//result/doc[1]/int[@name='id'][.='45']");
@@ -111,9 +122,9 @@ public class MoreLikeThisHandlerTest extends AbstractSolrTestCase {
     assertQ(mltreq
         ,"//result/doc[1]/int[@name='id'][.='45']");
 
-    // test that debugging works
+    // test that debugging works (test for MoreLikeThis*Handler*)
     params.set(CommonParams.QT, "/mlt");
-    params.set("debugQuery", "true");
+    params.set(CommonParams.DEBUG_QUERY, "true");
     assertQ(mltreq
         ,"//result/doc[1]/int[@name='id'][.='45']"
         ,"//lst[@name='debug']/lst[@name='explain']"

@@ -186,7 +186,7 @@ public final class ZkController {
   /**
    * @param collection
    * @param fileName
-   * @return
+   * @return true if config file exists
    * @throws KeeperException
    * @throws InterruptedException
    */
@@ -206,7 +206,7 @@ public final class ZkController {
   /**
    * @param zkConfigName
    * @param fileName
-   * @return
+   * @return config file data (in bytes)
    * @throws KeeperException
    * @throws InterruptedException
    */
@@ -250,7 +250,7 @@ public final class ZkController {
   }
 
   /**
-   * @return
+   * @return zookeeper server address
    */
   public String getZkServerAddress() {
     return zkServerAddress;
@@ -377,6 +377,13 @@ public final class ZkController {
       }
     }
     zkClient.getChildren(ZkStateReader.LIVE_NODES_ZKNODE, liveNodeWatcher);
+    try {
+      zkStateReader.updateLiveNodes();
+    } catch (IOException e) {
+      log.error("", e);
+      throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR,
+          "", e);
+    }
   }
   
   public String getNodeName() {
@@ -385,7 +392,7 @@ public final class ZkController {
 
   /**
    * @param path
-   * @return
+   * @return true if the path exists
    * @throws KeeperException
    * @throws InterruptedException
    */
@@ -396,7 +403,7 @@ public final class ZkController {
 
   /**
    * @param collection
-   * @return
+   * @return config value
    * @throws KeeperException
    * @throws InterruptedException
    * @throws IOException 

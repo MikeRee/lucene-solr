@@ -1,6 +1,6 @@
 package org.apache.lucene.index.codecs.appending;
 
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,7 +32,7 @@ import org.apache.lucene.index.codecs.PostingsReaderBase;
 import org.apache.lucene.index.codecs.standard.StandardPostingsReader;
 import org.apache.lucene.index.codecs.PostingsWriterBase;
 import org.apache.lucene.index.codecs.standard.StandardPostingsWriter;
-import org.apache.lucene.index.codecs.PrefixCodedTermsReader;
+import org.apache.lucene.index.codecs.BlockTermsReader;
 import org.apache.lucene.index.codecs.TermsIndexReaderBase;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
@@ -88,7 +88,7 @@ public class AppendingCodec extends Codec {
   @Override
   public FieldsProducer fieldsProducer(SegmentReadState state)
           throws IOException {
-    PostingsReaderBase docsReader = new StandardPostingsReader(state.dir, state.segmentInfo, state.readBufferSize);
+    PostingsReaderBase docsReader = new StandardPostingsReader(state.dir, state.segmentInfo, state.readBufferSize, state.codecId);
     TermsIndexReaderBase indexReader;
 
     boolean success = false;
@@ -97,7 +97,8 @@ public class AppendingCodec extends Codec {
               state.fieldInfos,
               state.segmentInfo.name,
               state.termsIndexDivisor,
-              BytesRef.getUTF8SortedAsUnicodeComparator());
+              BytesRef.getUTF8SortedAsUnicodeComparator(),
+              state.codecId);
       success = true;
     } finally {
       if (!success) {
@@ -111,7 +112,8 @@ public class AppendingCodec extends Codec {
               docsReader,
               state.readBufferSize,
               BytesRef.getUTF8SortedAsUnicodeComparator(),
-              StandardCodec.TERMS_CACHE_SIZE);
+              StandardCodec.TERMS_CACHE_SIZE,
+              state.codecId);
       success = true;
       return ret;
     } finally {
@@ -126,11 +128,11 @@ public class AppendingCodec extends Codec {
   }
 
   @Override
-  public void files(Directory dir, SegmentInfo segmentInfo, Set<String> files)
+  public void files(Directory dir, SegmentInfo segmentInfo, String codecId, Set<String> files)
           throws IOException {
-    StandardPostingsReader.files(dir, segmentInfo, files);
-    PrefixCodedTermsReader.files(dir, segmentInfo, files);
-    FixedGapTermsIndexReader.files(dir, segmentInfo, files);
+    StandardPostingsReader.files(dir, segmentInfo, codecId, files);
+    BlockTermsReader.files(dir, segmentInfo, codecId, files);
+    FixedGapTermsIndexReader.files(dir, segmentInfo, codecId, files);
   }
 
   @Override

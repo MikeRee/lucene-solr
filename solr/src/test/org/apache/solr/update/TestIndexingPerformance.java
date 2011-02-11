@@ -19,6 +19,7 @@ package org.apache.solr.update;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.Fieldable;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.util.AbstractSolrTestCase;
@@ -40,7 +41,9 @@ public class TestIndexingPerformance extends AbstractSolrTestCase {
   public static final Logger log 
     = LoggerFactory.getLogger(TestIndexingPerformance.class);
 
+  @Override
   public String getSchemaFile() { return "schema12.xml"; }
+  @Override
   public String getSolrConfigFile() { return "solrconfig_perf.xml"; }
 
   public void testIndexingPerf() throws IOException {
@@ -87,10 +90,7 @@ public class TestIndexingPerformance extends AbstractSolrTestCase {
 
     long start = System.currentTimeMillis();
 
-    AddUpdateCommand add = new AddUpdateCommand();
-    add.allowDups = !overwrite;
-    add.overwriteCommitted = overwrite;
-    add.overwritePending = overwrite;
+    AddUpdateCommand add = new AddUpdateCommand(req);
 
     Field idField=null;
 
@@ -102,7 +102,7 @@ public class TestIndexingPerformance extends AbstractSolrTestCase {
         for (int j=0; j<fields.length; j+=2) {
           String field = fields[j];
           String val = fields[j+1];
-          Field f = schema.getField(field).createField(val, 1.0f);
+          Fieldable f = schema.getField(field).createField(val, 1.0f);
           add.doc.add(f);
         }
       }
@@ -114,7 +114,7 @@ public class TestIndexingPerformance extends AbstractSolrTestCase {
     log.info("iter="+iter +" time=" + (end-start) + " throughput=" + ((long)iter*1000)/(end-start));
 
     //discard all the changes
-    updateHandler.rollback(new RollbackUpdateCommand());
+    updateHandler.rollback(new RollbackUpdateCommand(req));
 
     req.close();
   }

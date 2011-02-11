@@ -20,38 +20,48 @@ package org.apache.solr.schema;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.util.BytesRef;
 import org.apache.noggit.CharArr;
+import org.apache.solr.search.MutableValueLong;
+import org.apache.solr.search.MutableValue;
+import org.apache.solr.search.QParser;
 import org.apache.solr.search.function.ValueSource;
 import org.apache.solr.search.function.FieldCacheSource;
 import org.apache.solr.search.function.DocValues;
 import org.apache.solr.search.function.StringIndexDocValues;
 import org.apache.lucene.document.Fieldable;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.solr.util.ByteUtils;
 import org.apache.solr.util.NumberUtils;
 import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 
 import java.util.Map;
 import java.io.IOException;
 /**
  * @version $Id$
+ * 
+ * @deprecated use {@link LongField} or {@link TrieLongField} - will be removed in 5.x
  */
+@Deprecated
 public class SortableLongField extends FieldType {
+  @Override
   protected void init(IndexSchema schema, Map<String,String> args) {
   }
 
+  @Override
   public SortField getSortField(SchemaField field,boolean reverse) {
     return getStringSort(field,reverse);
   }
 
-  public ValueSource getValueSource(SchemaField field) {
+  @Override
+  public ValueSource getValueSource(SchemaField field, QParser qparser) {
     return new SortableLongFieldSource(field.name);
   }
 
+  @Override
   public String toInternal(String val) {
     return NumberUtils.long2sortableStr(val);
   }
 
+  @Override
   public String indexedToReadable(String indexedForm) {
     return NumberUtils.SortableStr2long(indexedForm);
   }
@@ -62,6 +72,7 @@ public class SortableLongField extends FieldType {
     out.write( indexedToReadable(ByteUtils.UTF8toUTF16(input)) );
   }
   
+  @Override
   public String toExternal(Fieldable f) {
     return indexedToReadable(f.stringValue());
   }
@@ -70,12 +81,8 @@ public class SortableLongField extends FieldType {
   public Long toObject(Fieldable f) {
     return NumberUtils.SortableStr2long(f.stringValue(),0,5);
   }
-  
-  public void write(XMLWriter xmlWriter, String name, Fieldable f) throws IOException {
-    String sval = f.stringValue();
-    xmlWriter.writeLong(name, NumberUtils.SortableStr2long(sval,0,sval.length()));
-  }
 
+  @Override
   public void write(TextResponseWriter writer, String name, Fieldable f) throws IOException {
     String sval = f.stringValue();
     writer.writeLong(name, NumberUtils.SortableStr2long(sval,0,sval.length()));
@@ -98,45 +105,81 @@ class SortableLongFieldSource extends FieldCacheSource {
     this.defVal = defVal;
   }
 
+  @Override
   public String description() {
     return "slong(" + field + ')';
   }
 
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
+  @Override
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
     final long def = defVal;
 
-    return new StringIndexDocValues(this, reader, field) {
+    return new StringIndexDocValues(this, readerContext, field) {
+      private final BytesRef spare = new BytesRef();
+
+      @Override
       protected String toTerm(String readableValue) {
         return NumberUtils.long2sortableStr(readableValue);
       }
 
+      @Override
       public float floatVal(int doc) {
         return (float)longVal(doc);
       }
 
+      @Override
       public int intVal(int doc) {
         return (int)longVal(doc);
       }
 
+      @Override
       public long longVal(int doc) {
         int ord=termsIndex.getOrd(doc);
-        return ord==0 ? def  : NumberUtils.SortableStr2long(termsIndex.lookup(ord, new BytesRef()),0,5);
+        return ord==0 ? def  : NumberUtils.SortableStr2long(termsIndex.lookup(ord, spare),0,5);
       }
 
+      @Override
       public double doubleVal(int doc) {
         return (double)longVal(doc);
       }
 
+      @Override
       public String strVal(int doc) {
         return Long.toString(longVal(doc));
       }
 
+      @Override
       public String toString(int doc) {
         return description() + '=' + longVal(doc);
+      }
+
+      @Override
+      public ValueFiller getValueFiller() {
+        return new ValueFiller() {
+          private final MutableValueLong mval = new MutableValueLong();
+
+          @Override
+          public MutableValue getValue() {
+            return mval;
+          }
+
+          @Override
+          public void fillValue(int doc) {
+            int ord=termsIndex.getOrd(doc);
+            if (ord == 0) {
+              mval.value = def;
+              mval.exists = false;
+            } else {
+              mval.value = NumberUtils.SortableStr2long(termsIndex.lookup(ord, spare),0,5);
+              mval.exists = true;
+            }
+          }
+        };
       }
     };
   }
 
+  @Override
   public boolean equals(Object o) {
     return o instanceof SortableLongFieldSource
             && super.equals(o)
@@ -144,6 +187,7 @@ class SortableLongFieldSource extends FieldCacheSource {
   }
 
   private static int hcode = SortableLongFieldSource.class.hashCode();
+  @Override
   public int hashCode() {
     return hcode + super.hashCode() + (int)defVal;
   };

@@ -18,7 +18,6 @@ package org.apache.lucene.store.instantiated;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -30,6 +29,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.MultiNorms;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.Fields;
@@ -59,9 +59,7 @@ import org.apache.lucene.util.BytesRef;
  * Consider using InstantiatedIndex as if it was immutable.
  */
 public class InstantiatedIndex
-    implements Serializable,Closeable {
-
-  private static final long serialVersionUID = 1l;
+    implements Closeable {
 
   private long version = System.currentTimeMillis();
 
@@ -211,12 +209,11 @@ public class InstantiatedIndex
       }
     }
 
-
-
     // create norms
     for (String fieldName : allFieldNames) {
       if (fields == null || fields.contains(fieldName)) {
-        getNormsByFieldNameAndDocumentNumber().put(fieldName, sourceIndexReader.norms(fieldName));
+        byte norms[] = MultiNorms.norms(sourceIndexReader, fieldName);
+        getNormsByFieldNameAndDocumentNumber().put(fieldName, norms);
       }
     }
 
@@ -238,6 +235,10 @@ public class InstantiatedIndex
           while((text = termsEnum.next()) != null) {
             String termText = text.utf8ToString();
             InstantiatedTerm instantiatedTerm = new InstantiatedTerm(field, termText);
+            final long totalTermFreq = termsEnum.totalTermFreq();
+            if (totalTermFreq != -1) {
+              instantiatedTerm.addPositionsCount(totalTermFreq);
+            }
             getTermsByFieldAndText().get(field).put(termText, instantiatedTerm);
             instantiatedTerm.setTermIndex(terms.size());
             terms.add(instantiatedTerm);

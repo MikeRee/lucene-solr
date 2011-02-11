@@ -38,7 +38,7 @@ import org.apache.lucene.util._TestUtil;
  * and validates the correct number of hits are returned.
  */
 public class TestWildcardRandom extends LuceneTestCase {
-  private Searcher searcher;
+  private IndexSearcher searcher;
   private IndexReader reader;
   private Directory dir;
   
@@ -61,7 +61,7 @@ public class TestWildcardRandom extends LuceneTestCase {
     }
     
     reader = writer.getReader();
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
     writer.close();
   }
   

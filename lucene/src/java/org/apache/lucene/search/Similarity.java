@@ -18,14 +18,13 @@ package org.apache.lucene.search;
  */
 
 
+import java.io.IOException;
+import java.util.Collection;
+
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Explanation.IDFExplanation;
 import org.apache.lucene.util.SmallFloat;
-
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.Collection;
 
 
 /** 
@@ -362,7 +361,7 @@ import java.util.Collection;
  *      Typically, a document that contains more of the query's terms will receive a higher score
  *      than another document with fewer query terms.
  *      This is a search time factor computed in
- *      {@link #coord(int, int) coord(q,d)}
+ *      {@link SimilarityProvider#coord(int, int) coord(q,d)}
  *      by the Similarity in effect at search time.
  *      <br>&nbsp;<br>
  *    </li>
@@ -462,12 +461,14 @@ import java.util.Collection;
  *        {@link org.apache.lucene.document.Fieldable#setBoost(float) field.setBoost()}
  *        before adding the field to a document.
  *        </li>
- *        <li>{@link #lengthNorm(String, int) <b>lengthNorm</b>(field)} - computed
+ *        <li><b>lengthNorm</b> - computed
  *        when the document is added to the index in accordance with the number of tokens
  *        of this field in the document, so that shorter fields contribute more to the score.
  *        LengthNorm is computed by the Similarity class in effect at indexing.
  *        </li>
  *      </ul>
+ *      The {@link #computeNorm} method is responsible for
+ *      combining all of these factors into a single float.
  *
  *      <p>
  *      When a document is added to the index, all the above factors are multiplied.
@@ -480,7 +481,7 @@ import java.util.Collection;
  *            norm(t,d) &nbsp; = &nbsp;
  *            {@link org.apache.lucene.document.Document#getBoost() doc.getBoost()}
  *            &nbsp;&middot;&nbsp;
- *            {@link #lengthNorm(String, int) lengthNorm(field)}
+ *            lengthNorm
  *            &nbsp;&middot;&nbsp;
  *          </td>
  *          <td valign="bottom" align="center" rowspan="1">
@@ -520,39 +521,12 @@ import java.util.Collection;
  *    </li>
  * </ol>
  *
- * @see #setDefault(Similarity)
- * @see org.apache.lucene.index.IndexWriter#setSimilarity(Similarity)
- * @see Searcher#setSimilarity(Similarity)
+ * @see org.apache.lucene.index.IndexWriterConfig#setSimilarityProvider(SimilarityProvider)
+ * @see IndexSearcher#setSimilarityProvider(SimilarityProvider)
  */
-public abstract class Similarity implements Serializable {
+public abstract class Similarity {
   
-  /**
-   * The Similarity implementation used by default.
-   **/
-  private static Similarity defaultImpl = new DefaultSimilarity();
   public static final int NO_DOC_ID_PROVIDED = -1;
-
-  /** Set the default Similarity implementation used by indexing and search
-   * code.
-   *
-   * @see Searcher#setSimilarity(Similarity)
-   * @see org.apache.lucene.index.IndexWriter#setSimilarity(Similarity)
-   */
-  public static void setDefault(Similarity similarity) {
-    Similarity.defaultImpl = similarity;
-  }
-
-  /** Return the default Similarity implementation used by indexing and search
-   * code.
-   *
-   * <p>This is initially an instance of {@link DefaultSimilarity}.
-   *
-   * @see Searcher#setSimilarity(Similarity)
-   * @see org.apache.lucene.index.IndexWriter#setSimilarity(Similarity)
-   */
-  public static Similarity getDefault() {
-    return Similarity.defaultImpl;
-  }
 
   /** Cache of decoded bytes. */
   private static final float[] NORM_TABLE = new float[256];
@@ -562,16 +536,6 @@ public abstract class Similarity implements Serializable {
       NORM_TABLE[i] = SmallFloat.byte315ToFloat((byte)i);
   }
 
-  /**
-   * Decodes a normalization factor stored in an index.
-   * @see #decodeNormValue(byte)
-   * @deprecated Use {@link #decodeNormValue} instead.
-   */
-  @Deprecated
-  public static float decodeNorm(byte b) {
-    return NORM_TABLE[b & 0xFF];  // & 0xFF maps negative bytes to positive above 127
-  }
-
   /** Decodes a normalization factor stored in an index.
    * @see #encodeNormValue(float)
    */
@@ -579,23 +543,23 @@ public abstract class Similarity implements Serializable {
     return NORM_TABLE[b & 0xFF];  // & 0xFF maps negative bytes to positive above 127
   }
 
-  /** Returns a table for decoding normalization bytes.
-   * @see #encodeNormValue(float)
-   * @see #decodeNormValue(byte)
-   * 
-   * @deprecated Use instance methods for encoding/decoding norm values to enable customization.
-   */
-  @Deprecated
-  public static float[] getNormDecoder() {
-    return NORM_TABLE;
-  }
-
   /**
-   * Compute the normalization value for a field, given the accumulated
+   * Computes the normalization value for a field, given the accumulated
    * state of term processing for this field (see {@link FieldInvertState}).
    * 
    * <p>Implementations should calculate a float value based on the field
    * state and then return that value.
+   *
+   * <p>Matches in longer fields are less precise, so implementations of this
+   * method usually return smaller values when <code>state.getLength()</code> is large,
+   * and larger values when <code>state.getLength()</code> is small.
+   * 
+   * <p>Note that the return values are computed under 
+   * {@link org.apache.lucene.index.IndexWriter#addDocument(org.apache.lucene.document.Document)} 
+   * and then stored using
+   * {@link #encodeNormValue(float)}.  
+   * Thus they have limited precision, and documents
+   * must be re-indexed if this method is altered.
    *
    * <p>For backward compatibility this method by default calls
    * {@link #lengthNorm(String, int)} passing
@@ -608,9 +572,7 @@ public abstract class Similarity implements Serializable {
    * @param state current processing state for this field
    * @return the calculated float norm
    */
-  public float computeNorm(String field, FieldInvertState state) {
-    return (state.getBoost() * lengthNorm(field, state.getLength()));
-  }
+  public abstract float computeNorm(String field, FieldInvertState state);
   
   /** Computes the normalization value for a field given the total number of
    * terms contained in a field.  These values, together with field boosts, are
@@ -634,23 +596,13 @@ public abstract class Similarity implements Serializable {
    * @return a normalization factor for hits on this field of this document
    *
    * @see org.apache.lucene.document.Field#setBoost(float)
-   */
-  public abstract float lengthNorm(String fieldName, int numTokens);
-
-  /** Computes the normalization value for a query given the sum of the squared
-   * weights of each of the query terms.  This value is multiplied into the
-   * weight of each query term. While the classic query normalization factor is
-   * computed as 1/sqrt(sumOfSquaredWeights), other implementations might
-   * completely ignore sumOfSquaredWeights (ie return 1).
    *
-   * <p>This does not affect ranking, but the default implementation does make scores
-   * from different queries more comparable than they would be by eliminating the
-   * magnitude of the Query vector as a factor in the score.
-   *
-   * @param sumOfSquaredWeights the sum of the squares of query term weights
-   * @return a normalization factor for query weights
+   * @deprecated Please override computeNorm instead
    */
-  public abstract float queryNorm(float sumOfSquaredWeights);
+  @Deprecated
+  public final float lengthNorm(String fieldName, int numTokens) {
+    throw new UnsupportedOperationException("please use computeNorm instead");
+  }
 
   /** Encodes a normalization factor for storage in an index.
    *
@@ -662,7 +614,6 @@ public abstract class Similarity implements Serializable {
    * are rounded down to the largest representable value.  Positive values too
    * small to represent are rounded up to the smallest positive representable
    * value.
-   *
    * @see org.apache.lucene.document.Field#setBoost(float)
    * @see org.apache.lucene.util.SmallFloat
    */
@@ -670,20 +621,6 @@ public abstract class Similarity implements Serializable {
     return SmallFloat.floatToByte315(f);
   }
   
-  /**
-   * Static accessor kept for backwards compability reason, use encodeNormValue instead.
-   * @param f norm-value to encode
-   * @return byte representing the given float
-   * @deprecated Use {@link #encodeNormValue} instead.
-   * 
-   * @see #encodeNormValue(float)
-   */
-  @Deprecated
-  public static byte encodeNorm(float f) {
-    return SmallFloat.floatToByte315(f);
-  }
-
-
   /** Computes a score factor based on a term or phrase's frequency in a
    * document.  This value is multiplied by the {@link #idf(int, int)}
    * factor for each term in the query and these products are then summed to
@@ -744,11 +681,11 @@ public abstract class Similarity implements Serializable {
    * idf(docFreq, searcher.maxDoc());
    * </pre>
    * 
-   * Note that {@link Searcher#maxDoc()} is used instead of
+   * Note that {@link IndexSearcher#maxDoc()} is used instead of
    * {@link org.apache.lucene.index.IndexReader#numDocs() IndexReader#numDocs()} because also 
-   * {@link Searcher#docFreq(Term)} is used, and when the latter 
-   * is inaccurate, so is {@link Searcher#maxDoc()}, and in the same direction.
-   * In addition, {@link Searcher#maxDoc()} is more efficient to compute
+   * {@link IndexSearcher#docFreq(Term)} is used, and when the latter 
+   * is inaccurate, so is {@link IndexSearcher#maxDoc()}, and in the same direction.
+   * In addition, {@link IndexSearcher#maxDoc()} is more efficient to compute
    *   
    * @param term the term in question
    * @param searcher the document collection being searched
@@ -757,7 +694,7 @@ public abstract class Similarity implements Serializable {
              and an explanation for the term.
    * @throws IOException
    */
-  public IDFExplanation idfExplain(final Term term, final Searcher searcher, int docFreq) throws IOException {
+  public IDFExplanation idfExplain(final Term term, final IndexSearcher searcher, int docFreq) throws IOException {
     final int df = docFreq;
     final int max = searcher.maxDoc();
     final float idf = idf(df, max);
@@ -771,16 +708,16 @@ public abstract class Similarity implements Serializable {
         public float getIdf() {
           return idf;
         }};
-   }
+  }
 
   /**
    * This method forwards to {@link
-   * #idfExplain(Term,Searcher,int)} by passing
+   * #idfExplain(Term,IndexSearcher,int)} by passing
    * <code>searcher.docFreq(term)</code> as the docFreq.
    */
-  public IDFExplanation idfExplain(final Term term, final Searcher searcher) throws IOException {
+  public IDFExplanation idfExplain(final Term term, final IndexSearcher searcher) throws IOException {
     return idfExplain(term, searcher, searcher.docFreq(term));
-   }
+  }
 
   /**
    * Computes a score factor for a phrase.
@@ -796,7 +733,7 @@ public abstract class Similarity implements Serializable {
    *         for each term.
    * @throws IOException
    */
-  public IDFExplanation idfExplain(Collection<Term> terms, Searcher searcher) throws IOException {
+  public IDFExplanation idfExplain(Collection<Term> terms, IndexSearcher searcher) throws IOException {
     final int max = searcher.maxDoc();
     float idf = 0.0f;
     final StringBuilder exp = new StringBuilder();
@@ -835,20 +772,6 @@ public abstract class Similarity implements Serializable {
    * @return a score factor based on the term's document frequency
    */
   public abstract float idf(int docFreq, int numDocs);
-
-  /** Computes a score factor based on the fraction of all query terms that a
-   * document contains.  This value is multiplied into scores.
-   *
-   * <p>The presence of a large portion of the query terms indicates a better
-   * match with the query, so implementations of this method usually return
-   * larger values when the ratio between these parameters is large and smaller
-   * values when the ratio between them is small.
-   *
-   * @param overlap the number of query terms matched in the document
-   * @param maxOverlap the total number of terms in the query
-   * @return a score factor based on term overlap with the query
-   */
-  public abstract float coord(int overlap, int maxOverlap);
 
   /**
    * Calculate a scoring factor based on the data in the payload.  Overriding implementations

@@ -17,18 +17,23 @@
 
 package org.apache.solr.update;
 
+import org.apache.solr.request.SolrQueryRequest;
+
 
 /** An index update command encapsulated in an object (Command pattern)
  *
  * @version $Id$
  */
   public class UpdateCommand {
-    protected String commandName;
+    protected final SolrQueryRequest req;
+    protected final String commandName;
 
-    public UpdateCommand(String commandName) {
+    public UpdateCommand(String commandName, SolrQueryRequest req) {
+      this.req = req;
       this.commandName = commandName;
     }
 
+    @Override
     public String toString() {
       return commandName;
     }

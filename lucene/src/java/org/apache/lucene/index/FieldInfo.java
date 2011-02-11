@@ -32,6 +32,7 @@ public final class FieldInfo {
   public boolean omitTermFreqAndPositions;
 
   public boolean storePayloads; // whether this field stores payloads together with term positions
+  int codecId = 0; // set inside SegmentCodecs#build() during segment flush - this is used to identify the codec used to write this field 
 
   FieldInfo(String na, boolean tk, int nu, boolean storeTermVector, 
             boolean storePositionWithTermVector,  boolean storeOffsetWithTermVector, 
@@ -51,7 +52,7 @@ public final class FieldInfo {
       this.storeOffsetWithTermVector = false;
       this.storePositionWithTermVector = false;
       this.storePayloads = false;
-      this.omitNorms = true;
+      this.omitNorms = false;
       this.omitTermFreqAndPositions = false;
     }
   }
@@ -81,7 +82,7 @@ public final class FieldInfo {
         this.storePayloads = true;
       }
       if (this.omitNorms != omitNorms) {
-        this.omitNorms = false;                // once norms are stored, always store
+        this.omitNorms = true;                // if one require omitNorms at least once, it remains off for life
       }
       if (this.omitTermFreqAndPositions != omitTermFreqAndPositions) {
         this.omitTermFreqAndPositions = true;                // if one require omitTermFreqAndPositions at least once, it remains off for life

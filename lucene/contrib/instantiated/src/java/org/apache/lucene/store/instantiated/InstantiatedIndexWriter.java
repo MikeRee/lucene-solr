@@ -38,12 +38,15 @@ import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Fieldable;
+import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermVectorOffsetInfo;
-import org.apache.lucene.search.Similarity;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.util.StringHelper;
+import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.CollectionUtil;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.BitVector;
 
@@ -62,12 +65,10 @@ public class InstantiatedIndexWriter implements Closeable {
 
   private PrintStream infoStream = null;
 
-  private int maxFieldLength = IndexWriter.DEFAULT_MAX_FIELD_LENGTH;
-
   private final InstantiatedIndex index;
   private final Analyzer analyzer;
 
-  private Similarity similarity = Similarity.getDefault(); // how to normalize;
+  private SimilarityProvider similarityProvider = IndexSearcher.getDefaultSimilarityProvider(); // how to normalize;
 
   private transient Set<String> fieldNameBuffer;
   /**
@@ -113,14 +114,14 @@ public class InstantiatedIndexWriter implements Closeable {
    *  MAddDocs_20000 -   7 4000 100 false -  -   1 -  -   20000 -  -   535,8 -  -  37,33 - 309 680 640 -  501 968 896
    * </pre>
    *
-   * @see org.apache.lucene.index.IndexWriter#setMergeFactor(int)
+   * @see org.apache.lucene.index.LogMergePolicy#setMergeFactor(int)
    */
   public void setMergeFactor(int mergeFactor) {
     this.mergeFactor = mergeFactor;
   }
 
   /**
-   * @see org.apache.lucene.index.IndexWriter#getMergeFactor()
+   * @see org.apache.lucene.index.LogMergePolicy#getMergeFactor()
    */
   public int getMergeFactor() {
     return mergeFactor;
@@ -201,9 +202,9 @@ public class InstantiatedIndexWriter implements Closeable {
       byte[] oldNorms = index.getNormsByFieldNameAndDocumentNumber().get(field);
       if (oldNorms != null) {
         System.arraycopy(oldNorms, 0, norms, 0, oldNorms.length);
-        Arrays.fill(norms, oldNorms.length, norms.length, similarity.encodeNormValue(1.0f));
+        Arrays.fill(norms, oldNorms.length, norms.length, (byte) 0);
       } else {
-        Arrays.fill(norms, 0, norms.length, similarity.encodeNormValue(1.0f));
+        Arrays.fill(norms, 0, norms.length, (byte) 0);
       }
       normsByFieldNameAndDocumentNumber.put(field, norms);
       fieldNames.remove(field);
@@ -211,7 +212,7 @@ public class InstantiatedIndexWriter implements Closeable {
     for (String field : fieldNames) {
       //System.out.println(field);
       byte[] norms = new byte[index.getDocumentsByNumber().length + termDocumentInformationFactoryByDocument.size()];
-      Arrays.fill(norms, 0, norms.length, similarity.encodeNormValue(1.0f));
+      Arrays.fill(norms, 0, norms.length, (byte) 0);
       normsByFieldNameAndDocumentNumber.put(field, norms);
     }
     fieldNames.clear();
@@ -236,10 +237,12 @@ public class InstantiatedIndexWriter implements Closeable {
         termsInDocument += eFieldTermDocInfoFactoriesByTermText.getValue().size();
 
         if (eFieldTermDocInfoFactoriesByTermText.getKey().indexed && !eFieldTermDocInfoFactoriesByTermText.getKey().omitNorms) {
-          float norm = eFieldTermDocInfoFactoriesByTermText.getKey().boost;
-          norm *= document.getDocument().getBoost();
-          norm *= similarity.lengthNorm(eFieldTermDocInfoFactoriesByTermText.getKey().fieldName, eFieldTermDocInfoFactoriesByTermText.getKey().fieldLength);
-          normsByFieldNameAndDocumentNumber.get(eFieldTermDocInfoFactoriesByTermText.getKey().fieldName)[document.getDocumentNumber()] = similarity.encodeNormValue(norm);
+          final String fieldName = eFieldTermDocInfoFactoriesByTermText.getKey().fieldName;
+          final FieldInvertState invertState = new FieldInvertState();
+          invertState.setBoost(eFieldTermDocInfoFactoriesByTermText.getKey().boost * document.getDocument().getBoost());
+          invertState.setLength(eFieldTermDocInfoFactoriesByTermText.getKey().fieldLength);
+          final float norm = similarityProvider.get(fieldName).computeNorm(fieldName, invertState);
+          normsByFieldNameAndDocumentNumber.get(fieldName)[document.getDocumentNumber()] = similarityProvider.get(fieldName).encodeNormValue(norm);
         } else {
           System.currentTimeMillis();
         }
@@ -314,6 +317,7 @@ public class InstantiatedIndexWriter implements Closeable {
           }
           associatedDocuments[associatedDocuments.length - 1] = info;          
           term.setAssociatedDocuments(associatedDocuments);
+          term.addPositionsCount(positions.length);
 
           // todo optimize, only if term vector?
           informationByTermOfCurrentDocument.put(term, info);
@@ -345,11 +349,7 @@ public class InstantiatedIndexWriter implements Closeable {
 
       for (Map.Entry<String, List<InstantiatedTermDocumentInformation>> eField_TermDocInfos : termDocumentInformationsByField.entrySet()) {
 
-        Collections.sort(eField_TermDocInfos.getValue(), new Comparator<InstantiatedTermDocumentInformation>() {
-          public int compare(InstantiatedTermDocumentInformation instantiatedTermDocumentInformation, InstantiatedTermDocumentInformation instantiatedTermDocumentInformation1) {
-            return instantiatedTermDocumentInformation.getTerm().getTerm().compareTo(instantiatedTermDocumentInformation1.getTerm().getTerm());
-          }
-        });
+        CollectionUtil.quickSort(eField_TermDocInfos.getValue(), tdComp);
 
         // add term vector
         if (documentFieldSettingsByFieldName.get(eField_TermDocInfos.getKey()).storeTermVector) {
@@ -366,7 +366,7 @@ public class InstantiatedIndexWriter implements Closeable {
     // order document informations in dirty terms
     for (InstantiatedTerm term : dirtyTerms) {
       // todo optimize, i believe this is useless, that the natural order is document number?
-      Arrays.sort(term.getAssociatedDocuments(), InstantiatedTermDocumentInformation.documentNumberComparator);
+      ArrayUtil.mergeSort(term.getAssociatedDocuments(), InstantiatedTermDocumentInformation.documentNumberComparator);
 
 //      // update association class reference for speedy skipTo()
 //      for (int i = 0; i < term.getAssociatedDocuments().length; i++) {
@@ -426,10 +426,14 @@ public class InstantiatedIndexWriter implements Closeable {
 
   }
 
+  private static final Comparator<InstantiatedTermDocumentInformation> tdComp = new Comparator<InstantiatedTermDocumentInformation>() {
+    public int compare(InstantiatedTermDocumentInformation instantiatedTermDocumentInformation, InstantiatedTermDocumentInformation instantiatedTermDocumentInformation1) {
+      return instantiatedTermDocumentInformation.getTerm().getTerm().compareTo(instantiatedTermDocumentInformation1.getTerm().getTerm());
+    }
+  };
+
   /**
-   * Adds a document to this index.  If the document contains more than
-   * {@link #setMaxFieldLength(int)} terms for a given field, the remainder are
-   * discarded.
+   * Adds a document to this index.
    */
   public void addDocument(Document doc) throws IOException {
     addDocument(doc, getAnalyzer());
@@ -437,9 +441,7 @@ public class InstantiatedIndexWriter implements Closeable {
 
   /**
    * Adds a document to this index, using the provided analyzer instead of the
-   * value of {@link #getAnalyzer()}.  If the document contains more than
-   * {@link #setMaxFieldLength(int)} terms for a given field, the remainder are
-   * discarded.
+   * value of {@link #getAnalyzer()}.
    *
    * @param doc
    * @param analyzer
@@ -551,9 +553,6 @@ public class InstantiatedIndexWriter implements Closeable {
             }
             tokens.add(token); // the vector will be built on commit.
             fieldSetting.fieldLength++;
-            if (fieldSetting.fieldLength > maxFieldLength) {
-              break;
-            }
           }
           tokenStream.end();
           tokenStream.close();
@@ -662,20 +661,12 @@ public class InstantiatedIndexWriter implements Closeable {
     addDocument(doc, analyzer);
   }
 
-  public int getMaxFieldLength() {
-    return maxFieldLength;
+  public SimilarityProvider getSimilarityProvider() {
+    return similarityProvider;
   }
 
-  public void setMaxFieldLength(int maxFieldLength) {
-    this.maxFieldLength = maxFieldLength;
-  }
-
-  public Similarity getSimilarity() {
-    return similarity;
-  }
-
-  public void setSimilarity(Similarity similarity) {
-    this.similarity = similarity;
+  public void setSimilarityProvider(SimilarityProvider similarityProvider) {
+    this.similarityProvider = similarityProvider;
   }
 
   public Analyzer getAnalyzer() {

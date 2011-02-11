@@ -18,16 +18,9 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.Locale;
 
-import org.apache.lucene.search.cache.ByteValuesCreator;
-import org.apache.lucene.search.cache.CachedArrayCreator;
-import org.apache.lucene.search.cache.DoubleValuesCreator;
-import org.apache.lucene.search.cache.FloatValuesCreator;
-import org.apache.lucene.search.cache.IntValuesCreator;
-import org.apache.lucene.search.cache.LongValuesCreator;
-import org.apache.lucene.search.cache.ShortValuesCreator;
+import org.apache.lucene.search.cache.*;
 import org.apache.lucene.util.StringHelper;
 
 /**
@@ -39,10 +32,9 @@ import org.apache.lucene.util.StringHelper;
  * @since   lucene 1.4
  * @see Sort
  */
-public class SortField
-implements Serializable {
+public class SortField {
 
-  /** Sort by document score (relevancy).  Sort values are Float and higher
+  /** Sort by document score (relevance).  Sort values are Float and higher
    * values are at the front. */
   public static final int SCORE = 0;
 
@@ -90,7 +82,7 @@ implements Serializable {
    * uses ordinals to do the sorting. */
   public static final int STRING_VAL = 11;
   
-  /** Represents sorting by document score (relevancy). */
+  /** Represents sorting by document score (relevance). */
   public static final SortField FIELD_SCORE = new SortField (null, SCORE);
 
   /** Represents sorting by document number (index order). */
@@ -138,7 +130,7 @@ implements Serializable {
    * @throws IllegalArgumentException if the parser fails to
    *  subclass an existing numeric parser, or field is null
    *  
-   *  @deprecated use EntryCreator version
+   *  @deprecated (4.0) use EntryCreator version
    */
   @Deprecated
   public SortField (String field, FieldCache.Parser parser) {
@@ -156,7 +148,7 @@ implements Serializable {
    * @throws IllegalArgumentException if the parser fails to
    *  subclass an existing numeric parser, or field is null
    *  
-   *  @deprecated use EntryCreator version
+   *  @deprecated (4.0) use EntryCreator version
    */
   @Deprecated
   public SortField (String field, FieldCache.Parser parser, boolean reverse) {
@@ -314,7 +306,7 @@ implements Serializable {
   /** Returns the instance of a {@link FieldCache} parser that fits to the given sort type.
    * May return <code>null</code> if no parser was specified. Sorting is using the default parser then.
    * @return An instance of a {@link FieldCache} parser, or <code>null</code>.
-   * @deprecated use getEntryCreator()
+   * @deprecated (4.0) use getEntryCreator()
    */
   @Deprecated
   public FieldCache.Parser getParser() {
@@ -431,13 +423,6 @@ implements Serializable {
     if (comparatorSource != null) hash += comparatorSource.hashCode();
     if (creator != null) hash += creator.hashCode()^0x3aaf56ff;
     return hash;
-  }
-
-  // field must be interned after reading from stream
-  private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
-    in.defaultReadObject();
-    if (field != null)
-      field = StringHelper.intern(field);
   }
 
   /** Returns the {@link FieldComparator} to use for

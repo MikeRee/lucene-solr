@@ -39,8 +39,6 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 
 
 public class QueryElevationComponentTest extends SolrTestCaseJ4 {
@@ -49,13 +47,22 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
   public static void beforeClass() throws Exception {
     initCore("solrconfig-elevate.xml","schema12.xml");
   }
-  
+
   @Before
   @Override
-  public void setUp() throws Exception {
+  public void setUp() throws Exception{
     super.setUp();
     clearIndex();
     assertU(commit());
+    assertU(optimize());
+    // make sure this component is initialized correctly for each test
+    QueryElevationComponent comp = (QueryElevationComponent)h.getCore().getSearchComponent("elevate");
+    NamedList<String> args = new NamedList<String>();
+    args.add( QueryElevationComponent.CONFIG_FILE, "elevate.xml" );
+    args.add( QueryElevationComponent.FIELD_TYPE, "string" );
+    comp.init( args );
+    comp.inform( h.getCore() );
+    comp.forceElevation = false; 
   }
   
   @Test
@@ -70,9 +77,12 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
     QueryElevationComponent comp = new QueryElevationComponent();
     comp.init( args );
     comp.inform( core );
-    
-    IndexReader reader = core.getSearcher().get().getReader();
+
+    SolrQueryRequest req = req();
+    IndexReader reader = req.getSearcher().getIndexReader();
     Map<String, ElevationObj> map = comp.getElevationMap( reader, core );
+    req.close();
+
     // Make sure the boosts loaded properly
     assertEquals( 3, map.size() );
     assertEquals( 1, map.get( "XXXX" ).priority.size() );
@@ -101,36 +111,22 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
     
     assertEquals( "xxxx", comp.getAnalyzedQuery( "XXXX" ) );
     assertEquals( "xxxxyyyy", comp.getAnalyzedQuery( "XXXX YYYY" ) );
-  }
 
-  @Test
-  public void testEmptyQuery() throws Exception {
-    SolrCore core = h.getCore();
-
-    //String query = "title:ipod";
-
-    Map<String,String> args = new HashMap<String, String>();
-    args.put( "q.alt", "*:*" );
-    args.put( "defType", "dismax");
-    args.put( CommonParams.QT, "/elevate" );
-    //args.put( CommonParams.FL, "id,title,score" );
-    SolrQueryRequest req = new LocalSolrQueryRequest( core, new MapSolrParams( args) );
-    assertQ("Make sure QEC handles null queries", req, "//*[@numFound='0']");
+    assertQ("Make sure QEC handles null queries", req("qt","/elevate", "q.alt","*:*", "defType","dismax"),
+        "//*[@numFound='0']");
 
   }
 
   @Test
   public void testSorting() throws IOException
   {
-    SolrCore core = h.getCore();
-    
-    assertU(adoc("id", "a", "title", "ipod",           "str_s", "a" ));
-    assertU(adoc("id", "b", "title", "ipod ipod",      "str_s", "b" ));
-    assertU(adoc("id", "c", "title", "ipod ipod ipod", "str_s", "c" ));
+    assertU(adoc("id", "a", "title", "ipod",           "str_s1", "a" ));
+    assertU(adoc("id", "b", "title", "ipod ipod",      "str_s1", "b" ));
+    assertU(adoc("id", "c", "title", "ipod ipod ipod", "str_s1", "c" ));
 
-    assertU(adoc("id", "x", "title", "boosted",                 "str_s", "x" ));
-    assertU(adoc("id", "y", "title", "boosted boosted",         "str_s", "y" ));
-    assertU(adoc("id", "z", "title", "boosted boosted boosted", "str_s", "z" ));
+    assertU(adoc("id", "x", "title", "boosted",                 "str_s1", "x" ));
+    assertU(adoc("id", "y", "title", "boosted boosted",         "str_s1", "y" ));
+    assertU(adoc("id", "z", "title", "boosted boosted boosted", "str_s1", "z" ));
     assertU(commit());
     
     String query = "title:ipod";
@@ -141,8 +137,10 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
     args.put( CommonParams.FL, "id,score" );
     args.put( "indent", "true" );
     //args.put( CommonParams.FL, "id,title,score" );
-    SolrQueryRequest req = new LocalSolrQueryRequest( core, new MapSolrParams( args) );
-    
+    SolrQueryRequest req = new LocalSolrQueryRequest( h.getCore(), new MapSolrParams( args) );
+    IndexReader reader = req.getSearcher().getIndexReader();
+    QueryElevationComponent booster = (QueryElevationComponent)req.getCore().getSearchComponent( "elevate" );
+
     assertQ("Make sure standard sort works as expected", req
             ,"//*[@numFound='3']"
             ,"//result/doc[1]/str[@name='id'][.='a']"
@@ -151,10 +149,9 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
             );
     
     // Explicitly set what gets boosted
-    IndexReader reader = core.getSearcher().get().getReader();
-    QueryElevationComponent booster = (QueryElevationComponent)core.getSearchComponent( "elevate" );
     booster.elevationCache.clear();
     booster.setTopQueryResults( reader, query, new String[] { "x", "y", "z" }, null );
+
 
     assertQ("All six should make it", req
             ,"//*[@numFound='6']"
@@ -191,7 +188,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
     // Try normal sort by 'id'
     // default 'forceBoost' should be false
     assertEquals( false, booster.forceElevation );
-    args.put( CommonParams.SORT, "str_s asc" );
+    args.put( CommonParams.SORT, "str_s1 asc" );
     assertQ( null, req
         ,"//*[@numFound='4']"
         ,"//result/doc[1]/str[@name='id'][.='a']"
@@ -230,6 +227,8 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
         ,"//result/doc[3]/str[@name='id'][.='c']"
         );
 
+
+    req.close();
   }
   
   // write a test file to boost some docs
@@ -253,31 +252,33 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
   @Test
   public void testElevationReloading() throws Exception
   {
-    SolrCore core = h.getCore();
-
     String testfile = "data-elevation.xml";
-    File f = new File( core.getDataDir(), testfile );
+    File f = new File( h.getCore().getDataDir(), testfile );
     writeFile( f, "aaa", "A" );
     
-    QueryElevationComponent comp = (QueryElevationComponent)core.getSearchComponent("elevate");
+    QueryElevationComponent comp = (QueryElevationComponent)h.getCore().getSearchComponent("elevate");
     NamedList<String> args = new NamedList<String>();
     args.add( QueryElevationComponent.CONFIG_FILE, testfile );
     comp.init( args );
-    comp.inform( core );
-    
-    IndexReader reader = core.getSearcher().get().getReader();
-    Map<String, ElevationObj> map = comp.getElevationMap(reader, core);
+    comp.inform( h.getCore() );
+
+    SolrQueryRequest req = req();
+    IndexReader reader = req.getSearcher().getIndexReader();
+    Map<String, ElevationObj> map = comp.getElevationMap(reader, h.getCore());
     assertTrue( map.get( "aaa" ).priority.containsKey( new BytesRef("A") ) );
     assertNull( map.get( "bbb" ) );
+    req.close();
     
     // now change the file
     writeFile( f, "bbb", "B" );
     assertU(adoc("id", "10000")); // will get same reader if no index change
     assertU(commit());
-    
-    reader = core.getSearcher().get().getReader();
-    map = comp.getElevationMap(reader, core);
+
+    req = req();
+    reader = req.getSearcher().getIndexReader();
+    map = comp.getElevationMap(reader, h.getCore());
     assertNull( map.get( "aaa" ) );
     assertTrue( map.get( "bbb" ).priority.containsKey( new BytesRef("B") ) );
+    req.close();
   }
 }

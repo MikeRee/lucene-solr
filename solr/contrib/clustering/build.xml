@@ -42,8 +42,12 @@
     <pathelement path="${dest}/test-classes"/>
     <pathelement path="${java.class.path}"/>
     <pathelement location="${common-solr.dir}/build/tests"/> <!-- include solr test code -->
-    <pathelement location="${common-solr.dir}/../lucene/build/classes/test" />  <!-- include some lucene test code -->
+    <pathelement location="${common-solr.dir}/../lucene/build/classes/test-framework" />  <!-- include some lucene test code -->
     <path refid="common.classpath"/>
+    <!-- DistributedClusteringComponentTest uses Jetty -->
+    <fileset dir="${solr-path}/example/lib">
+      <include name="**/*.jar" />
+    </fileset>
   </path>
 
   <target name="clean">
@@ -86,6 +90,10 @@
                 classpathref="test.classpath">
       <src path="src/test/java"/>
     </solr-javac>
+    <!-- Copy any data files present to the classpath -->
+    <copy todir="${dest}/test-classes">
+      <fileset dir="src/test/resources" excludes="**/*.java"/>
+    </copy>
   </target>
 
   <target name="example" depends="build,dist">
@@ -104,7 +112,7 @@
            maxmemory="512M"
            errorProperty="tests.failed"
            failureProperty="tests.failed"
-           dir="src/test/resources/"
+           dir="${junit.output.dir}"
            tempdir="${junit.output.dir}"
            forkmode="perBatch"
             >
@@ -115,7 +123,10 @@
       <sysproperty key="tests.timezone" value="${tests.timezone}"/>
       <sysproperty key="tests.multiplier" value="${tests.multiplier}"/>
       <sysproperty key="tests.seed" value="${tests.seed}"/>
+      <sysproperty key="tests.verbose" value="${tests.verbose}"/>
       <sysproperty key="tests.iter" value="${tests.iter}"/>
+      <!-- set whether or not nightly tests should run -->
+      <sysproperty key="tests.nightly" value="${tests.nightly}"/>
       <sysproperty key="jetty.testMode" value="1"/>
       <sysproperty key="tempDir" file="${junit.output.dir}"/>
       <sysproperty key="testmethod" value="${testmethod}"/>

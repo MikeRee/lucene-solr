@@ -29,8 +29,6 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.store.Directory;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 /**
  * A basic 'positive' Unit test class for the TermRangeFilter class.
  * 
@@ -46,7 +44,7 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
   public void testRangeFilterId() throws IOException {
     
     IndexReader reader = signedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
     
     int medId = ((maxId - minId) / 2);
     
@@ -143,13 +141,14 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
         numDocs).scoreDocs;
     assertEquals("med,med,T,T", 1, result.length);
     
+    search.close();
   }
   
   @Test
   public void testRangeFilterIdCollating() throws IOException {
     
     IndexReader reader = signedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
     
     Collator c = Collator.getInstance(Locale.ENGLISH);
     
@@ -245,13 +244,15 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
     numHits = search.search(q,
         new TermRangeFilter("id", medIP, medIP, T, T, c), 1000).totalHits;
     assertEquals("med,med,T,T", 1, numHits);
+    
+    search.close();
   }
   
   @Test
   public void testRangeFilterRand() throws IOException {
     
     IndexReader reader = signedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
     
     String minRP = pad(signedIndexDir.minR);
     String maxRP = pad(signedIndexDir.maxR);
@@ -322,6 +323,7 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
         numDocs).scoreDocs;
     assertEquals("max,nul,T,T", 1, result.length);
     
+    search.close();
   }
   
   @Test
@@ -329,7 +331,7 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
     
     // using the unsigned index because collation seems to ignore hyphens
     IndexReader reader = unsignedIndexReader;
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
     
     Collator c = Collator.getInstance(Locale.ENGLISH);
     
@@ -400,6 +402,8 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
     numHits = search.search(q,
         new TermRangeFilter("rand", maxRP, null, T, F, c), 1000).totalHits;
     assertEquals("max,nul,T,T", 1, numHits);
+    
+    search.close();
   }
   
   @Test
@@ -419,7 +423,7 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
     IndexReader reader = writer.getReader();
     writer.close();
     
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
     Query q = new TermQuery(new Term("body", "body"));
     
     // Neither Java 1.4.2 nor 1.5.0 has Farsi Locale collation available in
@@ -463,7 +467,7 @@ public class TestTermRangeFilter extends BaseTestRangeFilter {
     IndexReader reader = writer.getReader();
     writer.close();
     
-    IndexSearcher search = new IndexSearcher(reader);
+    IndexSearcher search = newSearcher(reader);
     Query q = new TermQuery(new Term("body", "body"));
     
     Collator collator = Collator.getInstance(new Locale("da", "dk"));

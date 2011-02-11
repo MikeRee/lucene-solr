@@ -30,7 +30,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * <p>An implementation of EntityProcessor which reads data from a url/file and give out a row which contains one String
+ * <p>An implementation of {@link EntityProcessor} which reads data from a url/file and give out a row which contains one String
  * value. The name of the field is 'plainText'.
  *
  * @version $Id$
@@ -40,11 +40,13 @@ public class PlainTextEntityProcessor extends EntityProcessorBase {
   private static final Logger LOG = LoggerFactory.getLogger(PlainTextEntityProcessor.class);
   private boolean ended = false;
 
+  @Override
   public void init(Context context) {
     super.init(context);
     ended = false;
   }
 
+  @Override
   public Map<String, Object> nextRow() {
     if (ended) return null;
     DataSource<Reader> ds = context.getDataSource();

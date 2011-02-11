@@ -25,7 +25,7 @@ import org.apache.commons.io.IOUtils;
 
 /**
  * <p>
- * An EntityProcessor instance which can stream lines of text read from a 
+ * An {@link EntityProcessor} instance which can stream lines of text read from a 
  * datasource. Options allow lines to be explicitly skipped or included in the index.
  * </p>
  * <p/>
@@ -54,6 +54,7 @@ import org.apache.commons.io.IOUtils;
  *
  * @version $Id$
  * @since solr 1.4
+ * @see Pattern
  */
 public class LineEntityProcessor extends EntityProcessorBase {
   private Pattern acceptLineRegex, skipLineRegex;
@@ -63,6 +64,7 @@ public class LineEntityProcessor extends EntityProcessorBase {
   /**
    * Parses each of the entity attributes.
    */
+  @Override
   public void init(Context context) {
     super.init(context);
     String s;
@@ -96,6 +98,7 @@ public class LineEntityProcessor extends EntityProcessorBase {
    * from the url. However transformers can be used to create as 
    * many other fields as required.
    */
+  @Override
   public Map<String, Object> nextRow() {
     if (reader == null) {
       reader = new BufferedReader((Reader) context.getDataSource().getData(url));

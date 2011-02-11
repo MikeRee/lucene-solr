@@ -19,12 +19,10 @@ package org.apache.solr.request;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
-import org.junit.After;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Random;
 
 
 public class SimpleFacetsTest extends SolrTestCaseJ4 {
@@ -34,12 +32,11 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     createIndex();
   }
 
-  static Random rand = new Random(); // TODO: a way to use lucene's newRandom()?
   static int random_commit_percent = 30;
   static int random_dupe_percent = 25;   // some duplicates in the index to create deleted docs
 
   static void randomCommit(int percent_chance) {
-    if (rand.nextInt(100) <= percent_chance)
+    if (random.nextInt(100) <= percent_chance)
       assertU(commit());
   }
 
@@ -49,7 +46,7 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
   static void add_doc(String... fieldsAndValues) {
     do {
       pendingDocs.add(fieldsAndValues);      
-    } while (rand.nextInt(100) <= random_dupe_percent);
+    } while (random.nextInt(100) <= random_dupe_percent);
 
     // assertU(adoc(fieldsAndValues));
     // randomCommit(random_commit_percent);
@@ -63,7 +60,7 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     indexFacetPrefixMultiValued();
     indexFacetPrefixSingleValued();
     
-   Collections.shuffle(pendingDocs, rand);
+   Collections.shuffle(pendingDocs, random);
     for (String[] doc : pendingDocs) {
       assertU(adoc(doc));
       randomCommit(random_commit_percent);
@@ -94,7 +91,8 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     add_doc("id", "47", 
             "range_facet_f", "28.62", 
             "trait_s", "Pig",
-            "text", "line up and fly directly at the enemy death cannons, clogging them with wreckage!");   
+            "text", "line up and fly directly at the enemy death cannons, clogging them with wreckage!",
+            "zerolen_s","");   
   }
 
   @Test
@@ -170,6 +168,16 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
             ,"//lst[@name='trait_s']/int[@name='Obnoxious'][.='2']"
             ,"//lst[@name='trait_s']/int[@name='Pig'][.='1']"
             );
+
+    // test excluding main query
+    assertQ(req("q", "{!tag=main}id:43"
+                 ,"facet", "true"
+                 ,"facet.query", "{!key=foo}id:42"
+                 ,"facet.query", "{!ex=main key=bar}id:42"    // only matches when we exclude main query
+                 )
+             ,"//lst[@name='facet_queries']/int[@name='foo'][.='0']"
+             ,"//lst[@name='facet_queries']/int[@name='bar'][.='1']"
+             );
 
     assertQ("check counts for applied facet queries using filtering (fq)",
             req("q", "id:[42 TO 47]"
@@ -300,6 +308,16 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
             ,"//int[2][@name='Obnoxious'][.='1']"
             ,"//int[3][@name='Tool'][.='2']"
             );
+
+
+     assertQ(req("q", "id:[42 TO 47]"
+                ,"facet", "true"
+                ,"facet.method","fc"
+                ,"fq", "id:[42 TO 45]"
+                ,"facet.field", "zerolen_s"
+                )
+            ,"*[count(//lst[@name='zerolen_s']/int)=1]"
+     );
   }
 
   public static void indexDateFacets() {

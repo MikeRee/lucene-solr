@@ -20,14 +20,14 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.Comparator;
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.ByteRunAutomaton;
 import org.apache.lucene.util.automaton.SpecialOperations;
-import org.apache.lucene.util.automaton.State;
 import org.apache.lucene.util.automaton.Transition;
+import org.apache.lucene.util.automaton.UTF32ToUTF8;
 
 /**
  * A FilteredTermsEnum that enumerates terms based upon what is accepted by a
@@ -47,8 +47,6 @@ import org.apache.lucene.util.automaton.Transition;
  * @lucene.experimental
  */
 public class AutomatonTermsEnum extends FilteredTermsEnum {
-  // the object-oriented form of the DFA
-  private final Automaton automaton;
   // a tableized array-based form of the DFA
   private final ByteRunAutomaton runAutomaton;
   // common suffix of the automaton
@@ -72,59 +70,26 @@ public class AutomatonTermsEnum extends FilteredTermsEnum {
   private final Comparator<BytesRef> termComp;
 
   /**
-   * Expert ctor:
    * Construct an enumerator based upon an automaton, enumerating the specified
-   * field, working on a supplied reader.
+   * field, working on a supplied TermsEnum
    * <p>
    * @lucene.experimental 
    * <p>
-   * @param runAutomaton pre-compiled ByteRunAutomaton
-   * @param finite true if the automaton accepts a finite language
+   * @param compiled CompiledAutomaton
    */
-  public AutomatonTermsEnum(ByteRunAutomaton runAutomaton,
-                     String field, IndexReader reader,
-                     boolean finite, BytesRef commonSuffixRef)
-      throws IOException {
-    super(reader, field);
-    this.automaton = runAutomaton.getAutomaton();
-    this.finite = finite;
+  public AutomatonTermsEnum(TermsEnum tenum, CompiledAutomaton compiled) throws IOException {
+    super(tenum);
+    this.finite = compiled.finite;
+    this.runAutomaton = compiled.runAutomaton;
+    this.commonSuffixRef = compiled.commonSuffixRef;
+    this.allTransitions = compiled.sortedTransitions;
 
-    this.runAutomaton = runAutomaton;
-    if (finite) {
-      // don't use suffix w/ finite DFAs
-      this.commonSuffixRef = null;
-    } else if (commonSuffixRef == null) {
-      // compute now
-      this.commonSuffixRef = SpecialOperations.getCommonSuffixBytesRef(automaton);
-    } else {
-      // precomputed
-      this.commonSuffixRef = commonSuffixRef;
-    }
-
-    // build a cache of sorted transitions for every state
-    allTransitions = new Transition[runAutomaton.getSize()][];
-    for (State state : this.automaton.getNumberedStates()) {
-      state.sortTransitions(Transition.CompareByMinMaxThenDest);
-      state.trimTransitionsArray();
-      allTransitions[state.getNumber()] = state.transitionsArray;
-    }
     // used for path tracking, where each bit is a numbered state.
     visited = new long[runAutomaton.getSize()];
 
     termComp = getComparator();
   }
   
-  /**
-   * Construct an enumerator based upon an automaton, enumerating the specified
-   * field, working on a supplied reader.
-   * <p>
-   * It will automatically calculate whether or not the automaton is finite
-   */
-  public AutomatonTermsEnum(Automaton automaton, String field, IndexReader reader)
-    throws IOException {
-    this(new ByteRunAutomaton(automaton), field, reader, SpecialOperations.isFinite(automaton), null);
-  }
- 
   /**
    * Returns true if the term matches the automaton. Also stashes away the term
    * to assist with smart enumeration.
@@ -146,9 +111,9 @@ public class AutomatonTermsEnum extends FilteredTermsEnum {
   @Override
   protected BytesRef nextSeekTerm(final BytesRef term) throws IOException {
     if (term == null) {
-      seekBytesRef.copy("");
+      assert seekBytesRef.length == 0;
       // return the empty term, as its valid
-      if (runAutomaton.run(seekBytesRef.bytes, seekBytesRef.offset, seekBytesRef.length)) {   
+      if (runAutomaton.isAccept(runAutomaton.getInitialState())) {   
         return seekBytesRef;
       }
     } else {
@@ -157,25 +122,20 @@ public class AutomatonTermsEnum extends FilteredTermsEnum {
 
     // seek to the next possible string;
     if (nextString()) {
-      // reposition
-           
-      if (linear)
-        setLinear(infinitePosition);
-      return seekBytesRef;
+      return seekBytesRef;  // reposition
+    } else {
+      return null;          // no more possible strings can match
     }
-    // no more possible strings can match
-    return null;
   }
-
-  // this instance prevents unicode conversion during backtracking,
-  // we can just call setLinear once at the end.
-  int infinitePosition;
 
   /**
    * Sets the enum to operate in linear fashion, as we have found
-   * a looping transition at position
+   * a looping transition at position: we set an upper bound and 
+   * act like a TermRangeQuery for this portion of the term space.
    */
   private void setLinear(int position) {
+    assert linear == false;
+    
     int state = runAutomaton.getInitialState();
     int maxInterval = 0xff;
     for (int i = 0; i < position; i++) {
@@ -199,6 +159,8 @@ public class AutomatonTermsEnum extends FilteredTermsEnum {
     System.arraycopy(seekBytesRef.bytes, 0, linearUpperBound.bytes, 0, position);
     linearUpperBound.bytes[position] = (byte) maxInterval;
     linearUpperBound.length = length;
+    
+    linear = true;
   }
 
   private final IntsRef savedStates = new IntsRef(10);
@@ -232,8 +194,7 @@ public class AutomatonTermsEnum extends FilteredTermsEnum {
         states[pos+1] = nextState;
         // we found a loop, record it for faster enumeration
         if (!finite && !linear && visited[nextState] == curGen) {
-          linear = true;
-          infinitePosition = pos;
+          setLinear(pos);
         }
         state = nextState;
       }
@@ -319,15 +280,16 @@ public class AutomatonTermsEnum extends FilteredTermsEnum {
            */
           transition = allTransitions[state][0];
           state = transition.getDest().getNumber();
-          // we found a loop, record it for faster enumeration
-          if (!finite && !linear && visited[state] == curGen) {
-            linear = true;
-            infinitePosition = seekBytesRef.length;
-          }
+          
           // append the minimum transition
           seekBytesRef.grow(seekBytesRef.length + 1);
           seekBytesRef.length++;
           seekBytesRef.bytes[seekBytesRef.length - 1] = (byte) transition.getMin();
+          
+          // we found a loop, record it for faster enumeration
+          if (!finite && !linear && visited[state] == curGen) {
+            setLinear(seekBytesRef.length-1);
+          }
         }
         return true;
       }
@@ -355,5 +317,27 @@ public class AutomatonTermsEnum extends FilteredTermsEnum {
       }
     }
     return -1; /* all solutions exhausted */
+  }
+  
+  /**
+   * immutable class with everything this enum needs.
+   */
+  public static class CompiledAutomaton {
+    public final ByteRunAutomaton runAutomaton;
+    public final Transition[][] sortedTransitions;
+    public final BytesRef commonSuffixRef;
+    public final boolean finite;
+    
+    public CompiledAutomaton(Automaton automaton, boolean finite) {
+      Automaton utf8 = new UTF32ToUTF8().convert(automaton);
+      runAutomaton = new ByteRunAutomaton(utf8, true);
+      sortedTransitions = utf8.getSortedTransitions();
+      this.finite = finite;
+      if (finite) {
+        commonSuffixRef = null;
+      } else {
+        commonSuffixRef = SpecialOperations.getCommonSuffixBytesRef(utf8);
+      }
+    }
   }
 }

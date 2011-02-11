@@ -22,11 +22,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.*;
-import org.junit.runner.RunWith;
 
-import java.io.File;
-
-@RunWith(LuceneTestCase.MultiCodecTestCaseRunner.class)
 public class TestStressIndexing extends LuceneTestCase {
   private static abstract class TimedThread extends Thread {
     volatile boolean failed;
@@ -165,17 +161,8 @@ public class TestStressIndexing extends LuceneTestCase {
     FSDirectory.
   */
   public void testStressIndexAndSearching() throws Exception {
-    // With ConcurrentMergeScheduler, in RAMDir
     Directory directory = newDirectory();
     runStressTest(directory, new ConcurrentMergeScheduler());
     directory.close();
-
-    // With ConcurrentMergeScheduler, in FSDir
-    File dirPath = _TestUtil.getTempDir("lucene.test.stress");
-    directory = FSDirectory.open(dirPath);
-    runStressTest(directory, new ConcurrentMergeScheduler());
-    directory.close();
-
-    _TestUtil.rmDir(dirPath);
   }
 }

@@ -78,19 +78,48 @@ public class CoreContainer
   protected String adminHandler;
   protected boolean shareSchema;
   protected String solrHome;
-  @Deprecated
-  protected String solrConfigFilenameOverride;
-  private String defaultCoreName = "";
+  protected String defaultCoreName = "";
   private ZkController zkController;
   private SolrZkServer zkServer;
 
   private String zkHost;
-  
+
+  {
+    log.info("New CoreContainer " + System.identityHashCode(this));
+  }
+
   public CoreContainer() {
     solrHome = SolrResourceLoader.locateSolrHome();
   }
-  
-  private void initZooKeeper(String zkHost, int zkClientTimeout) {
+
+  /**
+   * Initalize CoreContainer directly from the constructor
+   *
+   * @param dir
+   * @param configFile
+   * @throws ParserConfigurationException
+   * @throws IOException
+   * @throws SAXException
+   */
+  public CoreContainer(String dir, File configFile) throws ParserConfigurationException, IOException, SAXException
+  {
+    this.load(dir, configFile);
+  }
+
+  /**
+   * Minimal CoreContainer constructor.
+   * @param loader the CoreContainer resource loader
+   */
+  public CoreContainer(SolrResourceLoader loader) {
+    this.loader = loader;
+    this.solrHome = loader.getInstanceDir();
+  }
+
+  public CoreContainer(String solrHome) {
+    this.solrHome = solrHome;
+  }
+
+  protected void initZooKeeper(String zkHost, int zkClientTimeout) {
     // if zkHost sys property is not set, we are not using ZooKeeper
     String zookeeperHost;
     if(zkHost == null) {
@@ -188,15 +217,6 @@ public class CoreContainer
            "Setting abortOnConfigurationError==false is no longer supported");
     }
 
-    public String getSolrConfigFilename() {
-      return solrConfigFilename;
-    }
-
-    @Deprecated
-    public void setSolrConfigFilename(String solrConfigFilename) {
-      this.solrConfigFilename = solrConfigFilename;
-    }
-
     // core container instantiation
     public CoreContainer initialize() throws IOException,
         ParserConfigurationException, SAXException {
@@ -212,7 +232,7 @@ public class CoreContainer
         cores.load(solrHome, fconf);
       } else {
         log.info("no solr.xml file found - using default");
-        cores.load(solrHome, new ByteArrayInputStream(DEF_SOLR_XML.getBytes()));
+        cores.load(solrHome, new ByteArrayInputStream(DEF_SOLR_XML.getBytes("UTF-8")));
         cores.configFile = fconf;
       }
       
@@ -244,32 +264,7 @@ public class CoreContainer
     return p;
   }
 
-  /**
-   * Initalize CoreContainer directly from the constructor
-   * 
-   * @param dir
-   * @param configFile
-   * @throws ParserConfigurationException
-   * @throws IOException
-   * @throws SAXException
-   */
-  public CoreContainer(String dir, File configFile) throws ParserConfigurationException, IOException, SAXException 
-  {
-    this.load(dir, configFile);
-  }
-  
-  /**
-   * Minimal CoreContainer constructor. 
-   * @param loader the CoreContainer resource loader
-   */
-  public CoreContainer(SolrResourceLoader loader) {
-    this.loader = loader;
-    this.solrHome = loader.getInstanceDir();
-  }
 
-  public CoreContainer(String solrHome) {
-    this.solrHome = solrHome;
-  }
 
   //-------------------------------------------------------------------
   // Initialization / Cleanup
@@ -373,9 +368,7 @@ public class CoreContainer
           // deal with optional settings
           String opt = DOMUtil.getAttr(node, "config", null);
 
-          if(solrConfigFilenameOverride != null) {
-            p.setConfigName(solrConfigFilenameOverride);
-          } else if (opt != null) {
+          if (opt != null) {
             p.setConfigName(opt);
           }
           opt = DOMUtil.getAttr(node, "schema", null);
@@ -457,6 +450,7 @@ public class CoreContainer
    * Stops all cores.
    */
   public void shutdown() {
+    log.info("Shutting down CoreContainer instance="+System.identityHashCode(this));    
     synchronized(cores) {
       try {
         for(SolrCore core : cores.values()) {
@@ -479,7 +473,7 @@ public class CoreContainer
   protected void finalize() throws Throwable {
     try {
       if(!isShutDown){
-        log.error("CoreContainer was not shutdown prior to finalize(), indicates a bug -- POSSIBLE RESOURCE LEAK!!!");
+        log.error("CoreContainer was not shutdown prior to finalize(), indicates a bug -- POSSIBLE RESOURCE LEAK!!!  instance=" + System.identityHashCode(this));
         shutdown();
       }
     } finally {
@@ -885,7 +879,7 @@ public class CoreContainer
   
   /** Write the cores configuration through a writer.*/
   void persist(Writer w) throws IOException {
-    w.write("<?xml version='1.0' encoding='UTF-8'?>");
+    w.write("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n");
     w.write("<solr");
     if (this.libDir != null) {
       writeAttribute(w,"sharedLib",libDir);
@@ -894,12 +888,13 @@ public class CoreContainer
     w.write(">\n");
 
     if (containerProperties != null && !containerProperties.isEmpty())  {
-      writeProperties(w, containerProperties);
+      writeProperties(w, containerProperties, "  ");
     }
-    w.write("<cores");
+    w.write("  <cores");
     writeAttribute(w, "adminPath",adminPath);
     if(adminHandler != null) writeAttribute(w, "adminHandler",adminHandler);
     if(shareSchema) writeAttribute(w, "shareSchema","true");
+    if(!defaultCoreName.equals("")) writeAttribute(w, "defaultCoreName",defaultCoreName);
     w.write(">\n");
 
     synchronized(cores) {
@@ -908,7 +903,7 @@ public class CoreContainer
       }
     }
 
-    w.write("</cores>\n");
+    w.write("  </cores>\n");
     w.write("</solr>\n");
   }
 
@@ -923,8 +918,8 @@ public class CoreContainer
   
   /** Writes the cores configuration node for a given core. */
   void persist(Writer w, CoreDescriptor dcore) throws IOException {
-    w.write("  <core");
-    writeAttribute(w,"name",dcore.name);
+    w.write("    <core");
+    writeAttribute(w,"name",dcore.name.equals("") ? defaultCoreName : dcore.name);
     writeAttribute(w,"instanceDir",dcore.getInstanceDir());
     //write config (if not default)
     String opt = dcore.getConfigName();
@@ -958,14 +953,14 @@ public class CoreContainer
       w.write("/>\n"); // core
     else  {
       w.write(">\n");
-      writeProperties(w, dcore.getCoreProperties());
-      w.write("</core>");
+      writeProperties(w, dcore.getCoreProperties(), "      ");
+      w.write("    </core>\n");
     }
   }
 
-  private void writeProperties(Writer w, Properties props) throws IOException {
+  private void writeProperties(Writer w, Properties props, String indent) throws IOException {
     for (Map.Entry<Object, Object> entry : props.entrySet()) {
-      w.write("<property");
+      w.write(indent + "<property");
       writeAttribute(w,"name",entry.getKey());
       writeAttribute(w,"value",entry.getValue());
       w.write("/>\n");

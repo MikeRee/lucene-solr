@@ -20,38 +20,48 @@ package org.apache.solr.schema;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.util.BytesRef;
 import org.apache.noggit.CharArr;
+import org.apache.solr.search.MutableValueDouble;
+import org.apache.solr.search.MutableValue;
+import org.apache.solr.search.QParser;
 import org.apache.solr.search.function.ValueSource;
 import org.apache.solr.search.function.FieldCacheSource;
 import org.apache.solr.search.function.DocValues;
 import org.apache.solr.search.function.StringIndexDocValues;
 import org.apache.lucene.document.Fieldable;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.solr.util.ByteUtils;
 import org.apache.solr.util.NumberUtils;
 import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 
 import java.util.Map;
 import java.io.IOException;
 /**
  * @version $Id$
+ * 
+ * @deprecated use {@link DoubleField} or {@link TrieDoubleField} - will be removed in 5.x
  */
+@Deprecated
 public class SortableDoubleField extends FieldType {
+  @Override
   protected void init(IndexSchema schema, Map<String,String> args) {
   }
 
+  @Override
   public SortField getSortField(SchemaField field,boolean reverse) {
     return getStringSort(field,reverse);
   }
 
-  public ValueSource getValueSource(SchemaField field) {
+  @Override
+  public ValueSource getValueSource(SchemaField field, QParser qparser) {
     return new SortableDoubleFieldSource(field.name);
   }
 
+  @Override
   public String toInternal(String val) {
     return NumberUtils.double2sortableStr(val);
   }
 
+  @Override
   public String toExternal(Fieldable f) {
     return indexedToReadable(f.stringValue());
   }
@@ -61,6 +71,7 @@ public class SortableDoubleField extends FieldType {
     return NumberUtils.SortableStr2double(f.stringValue());
   }
   
+  @Override
   public String indexedToReadable(String indexedForm) {
     return NumberUtils.SortableStr2doubleStr(indexedForm);
   }
@@ -71,11 +82,7 @@ public class SortableDoubleField extends FieldType {
     out.write( indexedToReadable(ByteUtils.UTF8toUTF16(input)) );
   }
 
-  public void write(XMLWriter xmlWriter, String name, Fieldable f) throws IOException {
-    String sval = f.stringValue();
-    xmlWriter.writeDouble(name, NumberUtils.SortableStr2double(sval));
-  }
-
+  @Override
   public void write(TextResponseWriter writer, String name, Fieldable f) throws IOException {
     String sval = f.stringValue();
     writer.writeDouble(name, NumberUtils.SortableStr2double(sval));
@@ -97,45 +104,81 @@ class SortableDoubleFieldSource extends FieldCacheSource {
     this.defVal = defVal;
   }
 
+  @Override
   public String description() {
     return "sdouble(" + field + ')';
   }
 
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
+  @Override
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
     final double def = defVal;
 
-    return new StringIndexDocValues(this, reader, field) {
+    return new StringIndexDocValues(this, readerContext, field) {
+      private final BytesRef spare = new BytesRef();
+
+      @Override
       protected String toTerm(String readableValue) {
         return NumberUtils.double2sortableStr(readableValue);
       }
 
+      @Override
       public float floatVal(int doc) {
         return (float)doubleVal(doc);
       }
 
+      @Override
       public int intVal(int doc) {
         return (int)doubleVal(doc);
       }
 
+      @Override
       public long longVal(int doc) {
         return (long)doubleVal(doc);
       }
 
+      @Override
       public double doubleVal(int doc) {
         int ord=termsIndex.getOrd(doc);
-        return ord==0 ? def  : NumberUtils.SortableStr2double(termsIndex.lookup(ord, new BytesRef()));
+        return ord==0 ? def  : NumberUtils.SortableStr2double(termsIndex.lookup(ord, spare));
       }
 
+      @Override
       public String strVal(int doc) {
         return Double.toString(doubleVal(doc));
       }
 
+      @Override
       public String toString(int doc) {
         return description() + '=' + doubleVal(doc);
+      }
+
+      @Override
+      public ValueFiller getValueFiller() {
+        return new ValueFiller() {
+          private final MutableValueDouble mval = new MutableValueDouble();
+
+          @Override
+          public MutableValue getValue() {
+            return mval;
+          }
+
+          @Override
+          public void fillValue(int doc) {
+            int ord=termsIndex.getOrd(doc);
+            if (ord == 0) {
+              mval.value = def;
+              mval.exists = false;
+            } else {
+              mval.value = NumberUtils.SortableStr2double(termsIndex.lookup(ord, spare));
+              mval.exists = true;
+            }
+          }
+        };
       }
     };
   }
 
+  @Override
   public boolean equals(Object o) {
     return o instanceof SortableDoubleFieldSource
             && super.equals(o)
@@ -143,6 +186,7 @@ class SortableDoubleFieldSource extends FieldCacheSource {
   }
 
   private static int hcode = SortableDoubleFieldSource.class.hashCode();
+  @Override
   public int hashCode() {
     long bits = Double.doubleToLongBits(defVal);
     int ibits = (int)(bits ^ (bits>>>32));  // mix upper bits into lower.

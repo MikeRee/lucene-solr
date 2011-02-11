@@ -18,12 +18,10 @@
 package org.apache.solr.search.function;
 
 import org.apache.lucene.index.*;
-import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Similarity;
 import org.apache.lucene.util.BytesRef;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.search.SolrIndexReader;
 import org.apache.solr.util.ByteUtils;
 
 import java.io.IOException;
@@ -41,9 +39,9 @@ public class IDFValueSource extends DocFreqValueSource {
   }
 
   @Override
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    Searcher searcher = (Searcher)context.get("searcher");
-    Similarity sim = searcher.getSimilarity();
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    IndexSearcher searcher = (IndexSearcher)context.get("searcher");
+    Similarity sim = searcher.getSimilarityProvider().get(field);
     // todo: we need docFreq that takes a BytesRef
     String strVal = ByteUtils.UTF8toUTF16(indexedBytes);
     int docfreq = searcher.docFreq(new Term(indexedField, strVal));

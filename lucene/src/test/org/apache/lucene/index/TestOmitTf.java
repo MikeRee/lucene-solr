@@ -26,6 +26,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.store.Directory;
@@ -34,14 +35,12 @@ import org.apache.lucene.search.Explanation.IDFExplanation;
 
 public class TestOmitTf extends LuceneTestCase {
   
-  public static class SimpleSimilarity extends Similarity {
-    @Override public float lengthNorm(String field, int numTerms) { return 1.0f; }
-    @Override public float queryNorm(float sumOfSquaredWeights) { return 1.0f; }
+  public static class SimpleSimilarity extends Similarity implements SimilarityProvider {
+    @Override public float computeNorm(String field, FieldInvertState state) { return state.getBoost(); }
     @Override public float tf(float freq) { return freq; }
     @Override public float sloppyFreq(int distance) { return 2.0f; }
     @Override public float idf(int docFreq, int numDocs) { return 1.0f; }
-    @Override public float coord(int overlap, int maxOverlap) { return 1.0f; }
-    @Override public IDFExplanation idfExplain(Collection<Term> terms, Searcher searcher) throws IOException {
+    @Override public IDFExplanation idfExplain(Collection<Term> terms, IndexSearcher searcher) throws IOException {
       return new IDFExplanation() {
         @Override
         public float getIdf() {
@@ -52,6 +51,11 @@ public class TestOmitTf extends LuceneTestCase {
           return "Inexplicable";
         }
       };
+    }
+    public float queryNorm(float sumOfSquaredWeights) { return 1.0f; }
+    public float coord(int overlap, int maxOverlap) { return 1.0f; }
+    public Similarity get(String field) {
+      return this;
     }
   }
 
@@ -93,7 +97,7 @@ public class TestOmitTf extends LuceneTestCase {
     writer.close();
     _TestUtil.checkIndex(ram);
 
-    SegmentReader reader = SegmentReader.getOnlySegmentReader(ram);
+    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram, false));
     FieldInfos fi = reader.fieldInfos();
     assertTrue("OmitTermFreqAndPositions field bit should be set.", fi.fieldInfo("f1").omitTermFreqAndPositions);
     assertTrue("OmitTermFreqAndPositions field bit should be set.", fi.fieldInfo("f2").omitTermFreqAndPositions);
@@ -107,9 +111,12 @@ public class TestOmitTf extends LuceneTestCase {
   public void testMixedMerge() throws Exception {
     Directory ram = newDirectory();
     Analyzer analyzer = new MockAnalyzer();
-    IndexWriter writer = new IndexWriter(ram, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(3));
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(2);
+    IndexWriter writer = new IndexWriter(
+        ram,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer).
+            setMaxBufferedDocs(3).
+            setMergePolicy(newLogMergePolicy(2))
+    );
     Document d = new Document();
         
     // this field will have Tf
@@ -145,7 +152,7 @@ public class TestOmitTf extends LuceneTestCase {
 
     _TestUtil.checkIndex(ram);
 
-    SegmentReader reader = SegmentReader.getOnlySegmentReader(ram);
+    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram, false));
     FieldInfos fi = reader.fieldInfos();
     assertTrue("OmitTermFreqAndPositions field bit should be set.", fi.fieldInfo("f1").omitTermFreqAndPositions);
     assertTrue("OmitTermFreqAndPositions field bit should be set.", fi.fieldInfo("f2").omitTermFreqAndPositions);
@@ -160,9 +167,12 @@ public class TestOmitTf extends LuceneTestCase {
   public void testMixedRAM() throws Exception {
     Directory ram = newDirectory();
     Analyzer analyzer = new MockAnalyzer();
-    IndexWriter writer = new IndexWriter(ram, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(10));
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(2);
+    IndexWriter writer = new IndexWriter(
+        ram,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer).
+            setMaxBufferedDocs(10).
+            setMergePolicy(newLogMergePolicy(2))
+    );
     Document d = new Document();
         
     // this field will have Tf
@@ -189,7 +199,7 @@ public class TestOmitTf extends LuceneTestCase {
 
     _TestUtil.checkIndex(ram);
 
-    SegmentReader reader = SegmentReader.getOnlySegmentReader(ram);
+    SegmentReader reader = getOnlySegmentReader(IndexReader.open(ram, false));
     FieldInfos fi = reader.fieldInfos();
     assertTrue("OmitTermFreqAndPositions field bit should not be set.", !fi.fieldInfo("f1").omitTermFreqAndPositions);
     assertTrue("OmitTermFreqAndPositions field bit should be set.", fi.fieldInfo("f2").omitTermFreqAndPositions);
@@ -209,11 +219,10 @@ public class TestOmitTf extends LuceneTestCase {
     Directory ram = newDirectory();
     Analyzer analyzer = new MockAnalyzer();
     IndexWriter writer = new IndexWriter(ram, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(3));
+                                                                   TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(3).setMergePolicy(newLogMergePolicy()));
     LogMergePolicy lmp = (LogMergePolicy) writer.getConfig().getMergePolicy();
     lmp.setMergeFactor(2);
     lmp.setUseCompoundFile(false);
-    lmp.setUseCompoundDocStore(false);
     Document d = new Document();
         
     Field f1 = newField("f1", "This field has term freqs", Field.Store.NO, Field.Index.ANALYZED);
@@ -241,10 +250,14 @@ public class TestOmitTf extends LuceneTestCase {
   public void testBasic() throws Exception {
     Directory dir = newDirectory();  
     Analyzer analyzer = new MockAnalyzer();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(2)
-        .setSimilarity(new SimpleSimilarity()));
-    ((LogMergePolicy) writer.getConfig().getMergePolicy()).setMergeFactor(2);
+    IndexWriter writer = new IndexWriter(
+        dir,
+        newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer).
+            setMaxBufferedDocs(2).
+            setSimilarityProvider(new SimpleSimilarity()).
+            setMergePolicy(newInOrderLogMergePolicy(2))
+    );
+    writer.setInfoStream(VERBOSE ? System.out : null);
         
     StringBuilder sb = new StringBuilder(265);
     String term = "term";
@@ -271,8 +284,8 @@ public class TestOmitTf extends LuceneTestCase {
     /*
      * Verify the index
      */         
-    Searcher searcher = new IndexSearcher(dir, true);
-    searcher.setSimilarity(new SimpleSimilarity());
+    IndexSearcher searcher = new IndexSearcher(dir, true);
+    searcher.setSimilarityProvider(new SimpleSimilarity());
         
     Term a = new Term("noTf", term);
     Term b = new Term("tf", term);
@@ -322,7 +335,7 @@ public class TestOmitTf extends LuceneTestCase {
                       public final void collect(int doc) throws IOException {
                         //System.out.println("Q2: Doc=" + doc + " score=" + score);
                         float score = scorer.score();
-                        assertTrue(score==1.0f+doc);
+                        assertEquals(1.0f+doc, score, 0.00001f);
                         super.collect(doc);
                       }
                     });
@@ -406,8 +419,8 @@ public class TestOmitTf extends LuceneTestCase {
     public static int getSum() { return sum; }
     
     @Override
-    public void setNextReader(IndexReader reader, int docBase) {
-      this.docBase = docBase;
+    public void setNextReader(AtomicReaderContext context) {
+      docBase = context.docBase;
     }
     @Override
     public boolean acceptsDocsOutOfOrder() {

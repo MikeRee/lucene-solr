@@ -19,15 +19,17 @@ package org.apache.lucene.index;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
+import org.apache.lucene.index.IndexReader.ReaderContext;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.search.FieldCache; // not great (circular); used only to purge FieldCache entry on close
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.MapBackedSet;
 
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Comparator;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**  A <code>FilterIndexReader</code> contains another IndexReader, which it
  * uses as its basic source of data, possibly transforming the data along the
@@ -98,6 +100,11 @@ public class FilterIndexReader extends IndexReader {
     public long getUniqueTermCount() throws IOException {
       return in.getUniqueTermCount();
     }
+
+    @Override
+    public long getSumTotalTermFreq() throws IOException {
+      return in.getSumTotalTermFreq();
+    }
   }
 
   /** Base class for filtering {@link TermsEnum} implementations. */
@@ -130,11 +137,6 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
-    public void cacheCurrentTerm() throws IOException {
-      in.cacheCurrentTerm();
-    }
-
-    @Override
     public SeekStatus seek(long ord) throws IOException {
       return in.seek(ord);
     }
@@ -155,8 +157,13 @@ public class FilterIndexReader extends IndexReader {
     }
 
     @Override
-    public int docFreq() {
+    public int docFreq() throws IOException {
       return in.docFreq();
+    }
+
+    @Override
+    public long totalTermFreq() throws IOException {
+      return in.totalTermFreq();
     }
 
     @Override
@@ -172,6 +179,16 @@ public class FilterIndexReader extends IndexReader {
     @Override
     public Comparator<BytesRef> getComparator() throws IOException {
       return in.getComparator();
+    }
+
+    @Override
+    public void seek(BytesRef term, TermState state) throws IOException {
+      in.seek(term, state);
+    }
+
+    @Override
+    public TermState termState() throws IOException {
+      return in.termState();
     }
   }
 
@@ -270,6 +287,7 @@ public class FilterIndexReader extends IndexReader {
   public FilterIndexReader(IndexReader in) {
     super();
     this.in = in;
+    readerFinishedListeners = new MapBackedSet<ReaderFinishedListener>(new ConcurrentHashMap<ReaderFinishedListener,Boolean>());
   }
 
   @Override
@@ -279,7 +297,7 @@ public class FilterIndexReader extends IndexReader {
   
   @Override
   public Bits getDeletedDocs() {
-    return MultiFields.getDeletedDocs(in);
+    return in.getDeletedDocs();
   }
   
   @Override
@@ -350,12 +368,6 @@ public class FilterIndexReader extends IndexReader {
   }
 
   @Override
-  public void norms(String f, byte[] bytes, int offset) throws IOException {
-    ensureOpen();
-    in.norms(f, bytes, offset);
-  }
-
-  @Override
   protected void doSetNorm(int d, String f, byte b) throws CorruptIndexException, IOException {
     in.setNorm(d, f, b);
   }
@@ -381,11 +393,6 @@ public class FilterIndexReader extends IndexReader {
   @Override
   protected void doClose() throws IOException {
     in.close();
-
-    // NOTE: only needed in case someone had asked for
-    // FieldCache for top-level reader (which is generally
-    // not a good idea):
-    FieldCache.DEFAULT.purge(this);
   }
 
 
@@ -415,12 +422,17 @@ public class FilterIndexReader extends IndexReader {
   
   @Override
   public IndexReader[] getSequentialSubReaders() {
-    return null;
+    return in.getSequentialSubReaders();
+  }
+  
+  @Override
+  public ReaderContext getTopReaderContext() {
+    return in.getTopReaderContext();
   }
 
   @Override
   public Fields fields() throws IOException {
-    return MultiFields.getFields(in);
+    return in.fields();
   }
 
   /** If the subclass of FilteredIndexReader modifies the
@@ -438,5 +450,17 @@ public class FilterIndexReader extends IndexReader {
     buffer.append(in);
     buffer.append(')');
     return buffer.toString();
+  }
+
+  @Override
+  public void addReaderFinishedListener(ReaderFinishedListener listener) {
+    super.addReaderFinishedListener(listener);
+    in.addReaderFinishedListener(listener);
+  }
+
+  @Override
+  public void removeReaderFinishedListener(ReaderFinishedListener listener) {
+    super.removeReaderFinishedListener(listener);
+    in.removeReaderFinishedListener(listener);
   }
 }

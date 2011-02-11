@@ -129,8 +129,8 @@ public class CheckIndex {
       /** Name of the segment. */
       public String name;
 
-      /** Name of codec used to read this segment. */
-      public String codec;
+      /** CodecInfo used to read this segment. */
+      public SegmentCodecs codec;
 
       /** Document count (does not take deletions into account). */
       public int docCount;
@@ -304,7 +304,7 @@ public class CheckIndex {
    *  writer. */
   public Status checkIndex(List<String> onlySegments, CodecProvider codecs) throws IOException {
     NumberFormat nf = NumberFormat.getInstance();
-    SegmentInfos sis = new SegmentInfos();
+    SegmentInfos sis = new SegmentInfos(codecs);
     Status result = new Status();
     result.dir = dir;
     try {
@@ -408,7 +408,7 @@ public class CheckIndex {
       SegmentReader reader = null;
 
       try {
-        final String codec = info.getCodec().name;
+        final SegmentCodecs codec = info.getSegmentCodecs();
         msg("    codec=" + codec);
         segInfoStat.codec = codec;
         msg("    compound=" + info.getUseCompoundFile());
@@ -417,8 +417,8 @@ public class CheckIndex {
         segInfoStat.hasProx = info.getHasProx();
         msg("    numFiles=" + info.files().size());
         segInfoStat.numFiles = info.files().size();
-        msg("    size (MB)=" + nf.format(info.sizeInBytes()/(1024.*1024.)));
-        segInfoStat.sizeMB = info.sizeInBytes()/(1024.*1024.);
+        segInfoStat.sizeMB = info.sizeInBytes(true)/(1024.*1024.);
+        msg("    size (MB)=" + nf.format(segInfoStat.sizeMB));
         Map<String,String> diagnostics = info.getDiagnostics();
         segInfoStat.diagnostics = diagnostics;
         if (diagnostics.size() > 0) {
@@ -548,10 +548,12 @@ public class CheckIndex {
       if (infoStream != null) {
         infoStream.print("    test: field norms.........");
       }
-      final byte[] b = new byte[reader.maxDoc()];
+      byte[] b;
       for (final String fieldName : fieldNames) {
-        reader.norms(fieldName, b, 0);
-        ++status.totFields;
+        if (reader.hasNorms(fieldName)) {
+          b = reader.norms(fieldName);
+          ++status.totFields;
+        }
       }
 
       msg("OK [" + status.totFields + " fields]");
@@ -600,13 +602,15 @@ public class CheckIndex {
         }
         
         final TermsEnum terms = fieldsEnum.terms();
-
+        assert terms != null;
         boolean hasOrd = true;
         final long termCountStart = status.termCount;
 
         BytesRef lastTerm = null;
 
         Comparator<BytesRef> termComp = terms.getComparator();
+
+        long sumTotalTermFreq = 0;
 
         while(true) {
 
@@ -658,6 +662,8 @@ public class CheckIndex {
           }
 
           int lastDoc = -1;
+          int docCount = 0;
+          long totalTermFreq = 0;
           while(true) {
             final int doc = docs2.nextDoc();
             if (doc == DocIdSetIterator.NO_MORE_DOCS) {
@@ -665,6 +671,8 @@ public class CheckIndex {
             }
             final int freq = docs2.freq();
             status.totPos += freq;
+            totalTermFreq += freq;
+            docCount++;
 
             if (doc <= lastDoc) {
               throw new RuntimeException("term " + term + ": doc " + doc + " <= lastDoc " + lastDoc);
@@ -695,19 +703,36 @@ public class CheckIndex {
               }
             }
           }
+          
+          final long totalTermFreq2 = terms.totalTermFreq();
+          final boolean hasTotalTermFreq = postings != null && totalTermFreq2 != -1;
 
-          // Now count how many deleted docs occurred in
-          // this term:
-
+          // Re-count if there are deleted docs:
           if (reader.hasDeletions()) {
             final DocsEnum docsNoDel = terms.docs(null, docs);
-            int count = 0;
+            docCount = 0;
+            totalTermFreq = 0;
             while(docsNoDel.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-              count++;
+              docCount++;
+              totalTermFreq += docsNoDel.freq();
             }
-            if (count != docFreq) {
-              throw new RuntimeException("term " + term + " docFreq=" + docFreq + " != tot docs w/o deletions " + count);
+          }
+
+          if (docCount != docFreq) {
+            throw new RuntimeException("term " + term + " docFreq=" + docFreq + " != tot docs w/o deletions " + docCount);
+          }
+          if (hasTotalTermFreq) {
+            sumTotalTermFreq += totalTermFreq;
+            if (totalTermFreq != totalTermFreq2) {
+              throw new RuntimeException("term " + term + " totalTermFreq=" + totalTermFreq2 + " != recomputed totalTermFreq=" + totalTermFreq);
             }
+          }
+        }
+
+        if (sumTotalTermFreq != 0) {
+          final long v = fields.terms(field).getSumTotalTermFreq();
+          if (v != -1 && sumTotalTermFreq != v) {
+            throw new RuntimeException("sumTotalTermFreq for field " + field + "=" + v + " != recomputed sumTotalTermFreq=" + sumTotalTermFreq);
           }
         }
 
@@ -777,7 +802,7 @@ public class CheckIndex {
       msg("OK [" + status.termCount + " terms; " + status.totFreq + " terms/docs pairs; " + status.totPos + " tokens]");
 
     } catch (Throwable e) {
-      msg("ERROR [" + String.valueOf(e.getMessage()) + "]");
+      msg("ERROR: " + e);
       status.error = e;
       if (infoStream != null) {
         e.printStackTrace(infoStream);
@@ -877,6 +902,7 @@ public class CheckIndex {
   public void fixIndex(Status result) throws IOException {
     if (result.partial)
       throw new IllegalArgumentException("can only fix an index that was fully checked (this status checked a subset of segments)");
+    result.newSegments.changed();
     result.newSegments.commit(result.dir);
   }
 

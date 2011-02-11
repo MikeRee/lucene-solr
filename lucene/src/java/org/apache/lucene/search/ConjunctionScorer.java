@@ -17,9 +17,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.util.ArrayUtil;
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Arrays;
 import java.util.Comparator;
 
 /** Scorer for conjunctions, sets of queries, all of which are required. */
@@ -29,14 +29,14 @@ class ConjunctionScorer extends Scorer {
   private final float coord;
   private int lastDoc = -1;
 
-  public ConjunctionScorer(Similarity similarity, Collection<Scorer> scorers) throws IOException {
-    this(similarity, scorers.toArray(new Scorer[scorers.size()]));
+  public ConjunctionScorer(Weight weight, float coord, Collection<Scorer> scorers) throws IOException {
+    this(weight, coord, scorers.toArray(new Scorer[scorers.size()]));
   }
 
-  public ConjunctionScorer(Similarity similarity, Scorer... scorers) throws IOException {
-    super(similarity);
+  public ConjunctionScorer(Weight weight, float coord, Scorer... scorers) throws IOException {
+    super(weight);
     this.scorers = scorers;
-    coord = similarity.coord(scorers.length, scorers.length);
+    this.coord = coord;
     
     for (int i = 0; i < scorers.length; i++) {
       if (scorers[i].nextDoc() == NO_MORE_DOCS) {
@@ -51,8 +51,10 @@ class ConjunctionScorer extends Scorer {
     // We don't need to sort the array in any future calls because we know
     // it will already start off sorted (all scorers on same doc).
     
-    // note that this comparator is not consistent with equals!
-    Arrays.sort(scorers, new Comparator<Scorer>() {         // sort the array
+    // Note that this comparator is not consistent with equals!
+    // Also we use mergeSort here to be stable (so order of Scoreres that
+    // match on first document keeps preserved):
+    ArrayUtil.mergeSort(scorers, new Comparator<Scorer>() { // sort the array
       public int compare(Scorer o1, Scorer o2) {
         return o1.docID() - o2.docID();
       }

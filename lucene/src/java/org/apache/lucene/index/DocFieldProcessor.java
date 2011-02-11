@@ -34,21 +34,16 @@ import java.util.HashMap;
 final class DocFieldProcessor extends DocConsumer {
 
   final DocumentsWriter docWriter;
-  final FieldInfos fieldInfos = new FieldInfos();
+  final FieldInfos fieldInfos;
   final DocFieldConsumer consumer;
   final StoredFieldsWriter fieldsWriter;
 
   public DocFieldProcessor(DocumentsWriter docWriter, DocFieldConsumer consumer) {
     this.docWriter = docWriter;
     this.consumer = consumer;
+    fieldInfos = docWriter.getFieldInfos();
     consumer.setFieldInfos(fieldInfos);
     fieldsWriter = new StoredFieldsWriter(docWriter, fieldInfos);
-  }
-
-  @Override
-  public void closeDocStore(SegmentWriteState state) throws IOException {
-    consumer.closeDocStore(state);
-    fieldsWriter.closeDocStore(state);
   }
 
   @Override
@@ -69,7 +64,6 @@ final class DocFieldProcessor extends DocConsumer {
     // FieldInfo.storePayload.
     final String fileName = IndexFileNames.segmentFileName(state.segmentName, "", IndexFileNames.FIELD_INFOS_EXTENSION);
     fieldInfos.write(state.directory, fileName);
-    state.flushedFiles.add(fileName);
   }
 
   @Override

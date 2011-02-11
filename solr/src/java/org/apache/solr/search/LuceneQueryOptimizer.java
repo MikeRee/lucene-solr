@@ -24,7 +24,6 @@ package org.apache.solr.search;
 import org.apache.lucene.search.*;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.io.IOException;
 
@@ -47,6 +46,7 @@ class LuceneQueryOptimizer {
    */
   public LuceneQueryOptimizer(final int cacheSize, float threshold) {
     this.cache = new LinkedHashMap(cacheSize, 0.75f, true) {
+        @Override
         protected boolean removeEldestEntry(Map.Entry eldest) {
           return size() > cacheSize;              // limit size of cache
         }
@@ -55,7 +55,7 @@ class LuceneQueryOptimizer {
   }
 
   public TopDocs optimize(BooleanQuery original,
-                          Searcher searcher,
+                          IndexSearcher searcher,
                           int numHits,
                           Query[] queryOut,
                           Filter[] filterOut

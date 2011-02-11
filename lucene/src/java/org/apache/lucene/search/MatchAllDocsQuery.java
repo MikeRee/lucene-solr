@@ -18,8 +18,8 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.util.ToStringUtils;
 import org.apache.lucene.util.Bits;
 
@@ -51,11 +51,13 @@ public class MatchAllDocsQuery extends Query {
     private int doc = -1;
     private final int maxDoc;
     private final Bits delDocs;
+    private final Similarity similarity;
     
     MatchAllScorer(IndexReader reader, Similarity similarity, Weight w,
         byte[] norms) throws IOException {
-      super(similarity,w);
-      delDocs = MultiFields.getDeletedDocs(reader);
+      super(w);
+      this.similarity = similarity;
+      delDocs = reader.getDeletedDocs();
       score = w.getValue();
       maxDoc = reader.maxDoc();
       this.norms = norms;
@@ -80,7 +82,7 @@ public class MatchAllDocsQuery extends Query {
     
     @Override
     public float score() {
-      return norms == null ? score : score * getSimilarity().decodeNormValue(norms[docID()]);
+      return norms == null ? score : score * similarity.decodeNormValue(norms[docID()]);
     }
 
     @Override
@@ -95,8 +97,8 @@ public class MatchAllDocsQuery extends Query {
     private float queryWeight;
     private float queryNorm;
 
-    public MatchAllDocsWeight(Searcher searcher) {
-      this.similarity = searcher.getSimilarity();
+    public MatchAllDocsWeight(IndexSearcher searcher) {
+      this.similarity = normsField == null ? null : searcher.getSimilarityProvider().get(normsField);
     }
 
     @Override
@@ -127,13 +129,13 @@ public class MatchAllDocsQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(IndexReader reader, boolean scoreDocsInOrder, boolean topScorer) throws IOException {
-      return new MatchAllScorer(reader, similarity, this,
-          normsField != null ? reader.norms(normsField) : null);
+    public Scorer scorer(AtomicReaderContext context, ScorerContext scorerContext) throws IOException {
+      return new MatchAllScorer(context.reader, similarity, this,
+          normsField != null ? context.reader.norms(normsField) : null);
     }
 
     @Override
-    public Explanation explain(IndexReader reader, int doc) {
+    public Explanation explain(AtomicReaderContext context, int doc) {
       // explain query weight
       Explanation queryExpl = new ComplexExplanation
         (true, getValue(), "MatchAllDocsQuery, product of:");
@@ -147,7 +149,7 @@ public class MatchAllDocsQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(Searcher searcher) {
+  public Weight createWeight(IndexSearcher searcher) {
     return new MatchAllDocsWeight(searcher);
   }
 

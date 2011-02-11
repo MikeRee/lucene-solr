@@ -17,7 +17,7 @@
 
 package org.apache.solr.search.function;
 
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.search.IndexSearcher;
 
 import java.io.IOException;
 import java.util.Map;
@@ -33,14 +33,17 @@ import java.util.Map;
 
   protected abstract String name();
 
+  @Override
   public String description() {
     return name() + '(' + source.description() + ')';
   }
 
+  @Override
   public int hashCode() {
     return source.hashCode() + name().hashCode();
   }
 
+  @Override
   public boolean equals(Object o) {
     if (this.getClass() != o.getClass()) return false;
     SingleFunction other = (SingleFunction)o;
@@ -49,7 +52,7 @@ import java.util.Map;
   }
 
   @Override
-  public void createWeight(Map context, Searcher searcher) throws IOException {
+  public void createWeight(Map context, IndexSearcher searcher) throws IOException {
     source.createWeight(context, searcher);
   }
 }

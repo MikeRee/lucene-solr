@@ -38,10 +38,12 @@ import java.util.UUID;
  */
 public class TestBinaryResponseWriter extends AbstractSolrTestCase {
 
+  @Override
   public String getSchemaFile() {
     return "schema12.xml";
   }
 
+  @Override
   public String getSolrConfigFile() {
     return "solrconfig.xml";
   }
@@ -65,5 +67,7 @@ public class TestBinaryResponseWriter extends AbstractSolrTestCase {
       assertEquals("Returned object must be a string", "java.lang.String", document.getFieldValue("uuid").getClass().getName());
       assertEquals("Wrong UUID string returned", s, document.getFieldValue("uuid"));
     }
+
+    req.close();
   }
 }

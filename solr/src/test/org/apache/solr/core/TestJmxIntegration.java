@@ -46,6 +46,7 @@ public class TestJmxIntegration extends AbstractSolrTestCase {
     return "solrconfig.xml";
   }
 
+  @Override
   @Before
   public void setUp() throws Exception {
     // Make sure that at least one MBeanServer is available
@@ -53,6 +54,7 @@ public class TestJmxIntegration extends AbstractSolrTestCase {
     super.setUp();
   }
 
+  @Override
   @After
   public void tearDown() throws Exception {
     super.tearDown();
@@ -95,7 +97,6 @@ public class TestJmxIntegration extends AbstractSolrTestCase {
     }
     if (bean==null) throw new RuntimeException("searcher was never registered");
     ObjectName searcher = getObjectName("searcher", bean);
-
     MBeanServer mbeanServer = servers.get(0);
     log.info("Mbeans in server: " + mbeanServer.queryNames(null, null));
 
@@ -114,7 +115,14 @@ public class TestJmxIntegration extends AbstractSolrTestCase {
     Hashtable<String, String> map = new Hashtable<String, String>();
     map.put("type", key);
     map.put("id", infoBean.getName());
-    return ObjectName.getInstance("solr", map);
+    String coreName = h.getCore().getName();
+    if (coreName.equals("")) {
+      String defaultCoreName = h.getCore().getCoreDescriptor().getCoreContainer().getDefaultCoreName();
+      if (!defaultCoreName.equals("")) {
+        coreName = defaultCoreName;
+      }
+    }
+    return ObjectName.getInstance(("solr" + (null != coreName ? "/" + coreName : "")), map);
   }
 }
 

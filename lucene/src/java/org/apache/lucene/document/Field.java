@@ -17,12 +17,11 @@ package org.apache.lucene.document;
  * limitations under the License.
  */
 
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.index.IndexWriter;   // for javadoc
-import org.apache.lucene.util.StringHelper;
-
 import java.io.Reader;
-import java.io.Serializable;
+
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.util.StringHelper;
 
 /**
   A field is a section of a Document.  Each field has two parts, a name and a
@@ -32,7 +31,7 @@ import java.io.Serializable;
   index, so that they may be returned with hits on the document.
   */
 
-public final class Field extends AbstractField implements Fieldable, Serializable {
+public final class Field extends AbstractField implements Fieldable {
   
   /** Specifies whether and how a field should be stored. */
   public static enum Store {
@@ -521,47 +520,9 @@ public final class Field extends AbstractField implements Fieldable, Serializabl
    * 
    * @param name The name of the field
    * @param value The binary value
-   * @param store Must be Store.YES
-   * @throws IllegalArgumentException if store is <code>Store.NO</code> 
-   * @deprecated Use {@link #Field(String, byte[]) instead}
-   */
-  @Deprecated
-  public Field(String name, byte[] value, Store store) {
-    this(name, value, 0, value.length);
-
-    if (store == Store.NO) {
-      throw new IllegalArgumentException("binary values can't be unstored");
-    }
-  }
-
-  /**
-   * Create a stored field with binary value. Optionally the value may be compressed.
-   * 
-   * @param name The name of the field
-   * @param value The binary value
    */
   public Field(String name, byte[] value) {
     this(name, value, 0, value.length);
-  }
-
-  /**
-   * Create a stored field with binary value. Optionally the value may be compressed.
-   * 
-   * @param name The name of the field
-   * @param value The binary value
-   * @param offset Starting offset in value where this Field's bytes are
-   * @param length Number of bytes to use for this Field, starting at offset
-   * @param store How <code>value</code> should be stored (compressed or not)
-   * @throws IllegalArgumentException if store is <code>Store.NO</code> 
-   * @deprecated Use {@link #Field(String, byte[], int, int) instead}
-   */
-  @Deprecated
-  public Field(String name, byte[] value, int offset, int length, Store store) {
-    this(name, value, offset, length);
-
-    if (store == Store.NO) {
-      throw new IllegalArgumentException("binary values can't be unstored");
-    }
   }
 
   /**

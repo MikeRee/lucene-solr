@@ -91,16 +91,24 @@ public class TestTransactions extends LuceneTestCase {
     @Override
     public void doWork() throws Throwable {
 
-      IndexWriter writer1 = new IndexWriter(dir1, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer())
-          .setMaxBufferedDocs(3).setMergeScheduler(new ConcurrentMergeScheduler()));
-      ((LogMergePolicy) writer1.getConfig().getMergePolicy()).setMergeFactor(2);
+      IndexWriter writer1 = new IndexWriter(
+          dir1,
+          newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+              setMaxBufferedDocs(3).
+              setMergeScheduler(new ConcurrentMergeScheduler()).
+              setMergePolicy(newLogMergePolicy(2))
+      );
       ((ConcurrentMergeScheduler) writer1.getConfig().getMergeScheduler()).setSuppressExceptions();
 
       // Intentionally use different params so flush/merge
       // happen @ different times
-      IndexWriter writer2 = new IndexWriter(dir2, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer())
-          .setMaxBufferedDocs(2).setMergeScheduler(new ConcurrentMergeScheduler()));
-      ((LogMergePolicy) writer2.getConfig().getMergePolicy()).setMergeFactor(3);
+      IndexWriter writer2 = new IndexWriter(
+          dir2,
+          newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer()).
+              setMaxBufferedDocs(2).
+              setMergeScheduler(new ConcurrentMergeScheduler()).
+              setMergePolicy(newLogMergePolicy(3))
+      );
       ((ConcurrentMergeScheduler) writer2.getConfig().getMergeScheduler()).setSuppressExceptions();
 
       update(writer1);
@@ -193,8 +201,8 @@ public class TestTransactions extends LuceneTestCase {
 
   public void testTransactions() throws Throwable {
     // we cant use non-ramdir on windows, because this test needs to double-write.
-    MockDirectoryWrapper dir1 = new MockDirectoryWrapper(new RAMDirectory());
-    MockDirectoryWrapper dir2 = new MockDirectoryWrapper(new RAMDirectory());
+    MockDirectoryWrapper dir1 = new MockDirectoryWrapper(random, new RAMDirectory());
+    MockDirectoryWrapper dir2 = new MockDirectoryWrapper(random, new RAMDirectory());
     dir1.setPreventDoubleWrite(false);
     dir2.setPreventDoubleWrite(false);
     dir1.failOn(new RandomFailure());

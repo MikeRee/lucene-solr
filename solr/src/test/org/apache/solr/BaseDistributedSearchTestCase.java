@@ -1,5 +1,22 @@
 package org.apache.solr;
 
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -37,7 +54,7 @@ import org.slf4j.LoggerFactory;
  * @since solr 1.5
  */
 public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
-  public static Random r = new Random(0);
+  public static Random r = random;
 
   protected int shardCount = 4;
   /**
@@ -57,7 +74,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   protected String[] shardsArr;
   // Some ISPs redirect to their own web site for domains that don't exist, causing this to fail
   // protected String[] deadServers = {"does_not_exist_54321.com:33331/solr","localhost:33332/solr"};
-  protected String[] deadServers = {"localhost:33332/solr"};
+  protected String[] deadServers = {"[::1]:33332/solr"};
   protected File testDir;
   protected SolrServer controlClient;
 
@@ -81,24 +98,28 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   public static Logger log = LoggerFactory.getLogger(BaseDistributedSearchTestCase.class);
   
   public static RandVal rint = new RandVal() {
+    @Override
     public Object val() {
       return r.nextInt();
     }
   };
 
   public static RandVal rlong = new RandVal() {
+    @Override
     public Object val() {
       return r.nextLong();
     }
   };
 
   public static RandVal rfloat = new RandVal() {
+    @Override
     public Object val() {
       return r.nextFloat();
     }
   };
 
   public static RandVal rdouble = new RandVal() {
+    @Override
     public Object val() {
       return r.nextDouble();
     }
@@ -113,7 +134,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
    */
   public abstract void doTest() throws Exception;
 
-  public static String[] fieldNames = new String[]{"n_ti", "n_f", "n_tf", "n_d", "n_td", "n_l", "n_tl", "n_dt", "n_tdt"};
+  public static String[] fieldNames = new String[]{"n_ti1", "n_f1", "n_tf1", "n_d1", "n_td1", "n_l1", "n_tl1", "n_dt1", "n_tdt1"};
   public static RandVal[] randVals = new RandVal[]{rint, rfloat, rfloat, rdouble, rdouble, rlong, rlong, rdate, rdate};
 
   protected String[] getFieldNames() {
@@ -124,12 +145,21 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     return randVals;
   }
 
+  /**
+   * Subclasses can override this to change a test's solr home
+   * (default is in test-files)
+   */
+  public String getSolrHome() {
+    return SolrTestCaseJ4.TEST_HOME;
+  }
+  
   @Override
   public void setUp() throws Exception {
     SolrTestCaseJ4.resetExceptionIgnores();  // ignore anything with ignore_exception in it
     super.setUp();
     System.setProperty("solr.test.sys.prop1", "propone");
     System.setProperty("solr.test.sys.prop2", "proptwo");
+    System.setProperty("solr.solr.home", getSolrHome());
     testDir = new File(TEMP_DIR,
             getClass().getName() + "-" + System.currentTimeMillis());
     testDir.mkdirs();
@@ -311,6 +341,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
       Thread[] threads = new Thread[nThreads];
       for (int i = 0; i < threads.length; i++) {
         threads[i] = new Thread() {
+          @Override
           public void run() {
             for (int j = 0; j < stress; j++) {
               int which = r.nextInt(clients.size());
@@ -581,7 +612,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   }
 
   public static abstract class RandVal {
-    public static Random r = new Random();
+    public static Random r = random;
     public static Set uniqueValues = new HashSet();
 
     public abstract Object val();
@@ -597,6 +628,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   public static class RandDate extends RandVal {
     public static TrieDateField df = new TrieDateField();
 
+    @Override
     public Object val() {
       long v = r.nextLong();
       Date d = new Date(v);

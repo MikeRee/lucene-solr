@@ -21,7 +21,6 @@ import org.apache.lucene.util.ToStringUtils;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Iterator;
 
 
 /**
@@ -43,7 +42,7 @@ public class SpanNearPayloadCheckQuery extends SpanPositionCheckQuery {
   }
 
   @Override
-  protected boolean acceptPosition(Spans spans) throws IOException {
+  protected AcceptStatus acceptPosition(Spans spans) throws IOException {
     boolean result = spans.isPayloadAvailable();
     if (result == true) {
       Collection<byte[]> candidate = spans.getPayload();
@@ -62,17 +61,18 @@ public class SpanNearPayloadCheckQuery extends SpanPositionCheckQuery {
         }
         if (matches == payloadToMatch.size()){
           //we've verified all the bytes
-          return true;
+          return AcceptStatus.YES;
         } else {
-          return false;
+          return AcceptStatus.NO;
         }
       } else {
-        return false;
+        return AcceptStatus.NO;
       }
     }
-    return false;
+    return AcceptStatus.NO;
   }
 
+  @Override
   public String toString(String field) {
     StringBuilder buffer = new StringBuilder();
     buffer.append("spanPayCheck(");

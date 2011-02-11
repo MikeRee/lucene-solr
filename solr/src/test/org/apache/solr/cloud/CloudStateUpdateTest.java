@@ -27,17 +27,15 @@ import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.CoreContainer.Initializer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.core.CoreContainer.Initializer;
 import org.apache.zookeeper.CreateMode;
 import org.junit.BeforeClass;
+import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.junit.Test;
-import static org.junit.Assert.*;
 
 /**
  * TODO: look at hostPort used below
@@ -157,16 +155,23 @@ public class CloudStateUpdateTest extends SolrTestCaseJ4 {
     SolrCore core = container1.create(dcore);
     container1.register(core, false);
     
-    // slight pause - TODO: takes an oddly long amount of time to schedule tasks
-    // with almost no delay ...
-    Thread.sleep(5000);
-
     ZkController zkController2 = container2.getZkController();
 
     String host = zkController2.getHostName();
-
-    CloudState cloudState2 = zkController2.getCloudState();
-    Map<String,Slice> slices = cloudState2.getSlices("testcore");
+    
+    // slight pause - TODO: takes an oddly long amount of time to schedule tasks
+    // with almost no delay ...
+    CloudState cloudState2 = null;
+    Map<String,Slice> slices = null;
+    for (int i = 75; i > 0; i--) {
+      cloudState2 = zkController2.getCloudState();
+      slices = cloudState2.getSlices("testcore");
+      
+      if (slices != null && slices.containsKey(host + ":1661_solr_testcore")) {
+        break;
+      }
+      Thread.sleep(500);
+    }
 
     assertNotNull(slices);
     assertTrue(slices.containsKey(host + ":1661_solr_testcore"));
@@ -192,12 +197,12 @@ public class CloudStateUpdateTest extends SolrTestCaseJ4 {
 
     container3.shutdown();
 
-    // slight pause for watch to trigger
-    for(int i = 0; i < 4; i++) {
+    // slight pause (15s timeout) for watch to trigger
+    for(int i = 0; i < (5 * 15); i++) {
       if(zkController2.getCloudState().getLiveNodes().size() == 2) {
         break;
       }
-      Thread.sleep(50);
+      Thread.sleep(200);
     }
 
     assertEquals(2, zkController2.getCloudState().getLiveNodes().size());
@@ -209,13 +214,14 @@ public class CloudStateUpdateTest extends SolrTestCaseJ4 {
     container2.shutdown();
 
     container2 = init2.initialize();
-
-    Thread.sleep(2000);
     
-    if (!container1.getZkController().getCloudState().liveNodesContain(
-        container2.getZkController().getNodeName())) {
-      // pause some more
-      Thread.sleep(5000);
+    // pause for watch to trigger
+    for(int i = 0; i < 200; i++) {
+      if (container1.getZkController().getCloudState().liveNodesContain(
+          container2.getZkController().getNodeName())) {
+        break;
+      }
+      Thread.sleep(100);
     }
 
     assertTrue(container1.getZkController().getCloudState().liveNodesContain(
@@ -223,6 +229,7 @@ public class CloudStateUpdateTest extends SolrTestCaseJ4 {
     
   }
 
+  @Override
   public void tearDown() throws Exception {
     if (VERBOSE) {
       printLayout(zkServer.getZkHost());

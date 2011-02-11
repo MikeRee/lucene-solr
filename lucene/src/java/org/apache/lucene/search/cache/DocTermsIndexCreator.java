@@ -24,6 +24,8 @@ import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.OrdTermState;
+import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -36,7 +38,7 @@ import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.packed.GrowableWriter;
 import org.apache.lucene.util.packed.PackedInts;
 
-public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorWithOptions<T>
+public class DocTermsIndexCreator extends EntryCreatorWithOptions<DocTermsIndex>
 {
   public static final int FASTER_BUT_MORE_RAM = 2;
 
@@ -66,7 +68,7 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
   }
 
   @Override
-  public T create(IndexReader reader) throws IOException
+  public DocTermsIndex create(IndexReader reader) throws IOException
   {
     String field = StringHelper.intern(this.field); // TODO?? necessary?
     Terms terms = MultiFields.getTerms(reader, field);
@@ -130,7 +132,6 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
 
     if (terms != null) {
       final TermsEnum termsEnum = terms.iterator();
-      final Bits delDocs = MultiFields.getDeletedDocs(reader);
       DocsEnum docs = null;
 
       while(true) {
@@ -149,7 +150,7 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
           termOrdToBytesOffset = termOrdToBytesOffset.resize(ArrayUtil.oversize(1+termOrd, 1));
         }
         termOrdToBytesOffset.set(termOrd, bytes.copyUsingLengthPrefix(term));
-        docs = termsEnum.docs(delDocs, docs);
+        docs = termsEnum.docs(null, docs);
         while (true) {
           final int docID = docs.nextDoc();
           if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -166,11 +167,11 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
     }
 
     // maybe an int-only impl?
-    return (T)new DocTermsIndexImpl(bytes.freeze(true), termOrdToBytesOffset.getMutable(), docToTermOrd.getMutable(), termOrd);
+    return new DocTermsIndexImpl(bytes.freeze(true), termOrdToBytesOffset.getMutable(), docToTermOrd.getMutable(), termOrd);
   }
 
   @Override
-  public T validate(T entry, IndexReader reader) throws IOException {
+  public DocTermsIndex validate(DocTermsIndex entry, IndexReader reader) throws IOException {
     // TODO? nothing? perhaps subsequent call with FASTER_BUT_MORE_RAM?
     return entry;
   }
@@ -213,7 +214,7 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
 
     @Override
     public BytesRef lookup(int ord, BytesRef ret) {
-      return bytes.fillUsingLengthPrefix(ret, termOrdToBytesOffset.get(ord));
+      return bytes.fill(ret, termOrdToBytesOffset.get(ord));
     }
 
     @Override
@@ -235,21 +236,41 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
         currentBlockNumber = 0;
         blocks = bytes.getBlocks();
         blockEnds = bytes.getBlockEnds();
-        currentBlockNumber = bytes.fillUsingLengthPrefix2(term, termOrdToBytesOffset.get(0));
+        currentBlockNumber = bytes.fillAndGetIndex(term, termOrdToBytesOffset.get(0));
         end = blockEnds[currentBlockNumber];
       }
 
       @Override
       public SeekStatus seek(BytesRef text, boolean useCache) throws IOException {
-        // TODO - we can support with binary search
-        throw new UnsupportedOperationException();
+        int low = 1;
+        int high = numOrd-1;
+        
+        while (low <= high) {
+          int mid = (low + high) >>> 1;
+          seek(mid);
+          int cmp = term.compareTo(text);
+
+          if (cmp < 0)
+            low = mid + 1;
+          else if (cmp > 0)
+            high = mid - 1;
+          else
+            return SeekStatus.FOUND; // key found
+        }
+        
+        if (low == numOrd) {
+          return SeekStatus.END;
+        } else {
+          seek(low);
+          return SeekStatus.NOT_FOUND;
+        }
       }
 
       @Override
       public SeekStatus seek(long ord) throws IOException {
         assert(ord >= 0 && ord <= numOrd);
         // TODO: if gap is small, could iterate from current position?  Or let user decide that?
-        currentBlockNumber = bytes.fillUsingLengthPrefix2(term, termOrdToBytesOffset.get((int)ord));
+        currentBlockNumber = bytes.fillAndGetIndex(term, termOrdToBytesOffset.get((int)ord));
         end = blockEnds[currentBlockNumber];
         currentOrd = (int)ord;
         return SeekStatus.FOUND;
@@ -285,11 +306,6 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
       }
 
       @Override
-      public void cacheCurrentTerm() throws IOException {
-        throw new UnsupportedOperationException();
-      }
-
-      @Override
       public BytesRef term() throws IOException {
         return term;
       }
@@ -305,6 +321,11 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
       }
 
       @Override
+      public long totalTermFreq() {
+        return -1;
+      }
+
+      @Override
       public DocsEnum docs(Bits skipDocs, DocsEnum reuse) throws IOException {
         throw new UnsupportedOperationException();
       }
@@ -316,7 +337,20 @@ public class DocTermsIndexCreator<T extends DocTermsIndex> extends EntryCreatorW
 
       @Override
       public Comparator<BytesRef> getComparator() throws IOException {
-        throw new UnsupportedOperationException();
+        return BytesRef.getUTF8SortedAsUnicodeComparator();
+      }
+
+      @Override
+      public void seek(BytesRef term, TermState state) throws IOException {
+        assert state != null && state instanceof OrdTermState;
+        this.seek(((OrdTermState)state).ord);
+      }
+
+      @Override
+      public TermState termState() throws IOException {
+        OrdTermState state = new OrdTermState();
+        state.ord = currentOrd;
+        return state;
       }
     }
   }

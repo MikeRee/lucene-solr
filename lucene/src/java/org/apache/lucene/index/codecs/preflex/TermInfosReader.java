@@ -30,7 +30,7 @@ import org.apache.lucene.util.DoubleBarrelLRUCache;
 /** This stores a monotonically increasing set of <Term, TermInfo> pairs in a
  * Directory.  Pairs are accessed either by Term or by ordinal position the
  * set
- * @deprecated This class has been replaced by
+ * @deprecated (4.0) This class has been replaced by
  * FormatPostingsTermsDictReader, except for reading old segments. 
  * @lucene.experimental
  */
@@ -67,15 +67,18 @@ public final class TermInfosReader {
       this.term = t;
     }
 
+    @Override
     public boolean equals(Object other) {
       CloneableTerm t = (CloneableTerm) other;
       return this.term.equals(t.term);
     }
 
+    @Override
     public int hashCode() {
       return term.hashCode();
     }
 
+    @Override
     public Object clone() {
       return new CloneableTerm(term);
     }

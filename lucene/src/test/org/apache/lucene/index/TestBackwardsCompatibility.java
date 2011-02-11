@@ -17,39 +17,33 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.util.Arrays;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Random;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Fieldable;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.document.NumericField;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.NumericRangeQuery;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.SimilarityProvider;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.Bits;
 
 /*
   Verify we can read the pre-4.0 file format, do searches
@@ -77,39 +71,6 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   }
   */
 
-  /* Unzips zipName --> dirName, removing dirName
-     first */
-  public void unzip(File zipName, String destDirName) throws IOException {
-
-    ZipFile zipFile = new ZipFile(zipName);
-
-    Enumeration<? extends ZipEntry> entries = zipFile.entries();
-
-    String dirName = fullDir(destDirName);
-
-    File fileDir = new File(dirName);
-    rmDir(destDirName);
-
-    fileDir.mkdir();
-
-    while (entries.hasMoreElements()) {
-      ZipEntry entry = entries.nextElement();
-
-      InputStream in = zipFile.getInputStream(entry);
-      OutputStream out = new BufferedOutputStream(new FileOutputStream(new File(fileDir, entry.getName())));
-
-      byte[] buffer = new byte[8192];
-      int len;
-      while((len = in.read(buffer)) >= 0) {
-        out.write(buffer, 0, len);
-      }
-
-      in.close();
-      out.close();
-    }
-
-    zipFile.close();
-  }
 /*
   public void testCreateCFS() throws IOException {
     String dirName = "testindex.cfs";
@@ -149,10 +110,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   /** This test checks that *only* IndexFormatTooOldExceptions are throws when you open and operate on too old indexes! */
   public void testUnsupportedOldIndexes() throws Exception {
     for(int i=0;i<unsupportedNames.length;i++) {
-      unzip(getDataFile("unsupported." + unsupportedNames[i] + ".zip"), unsupportedNames[i]);
-
-      String fullPath = fullDir(unsupportedNames[i]);
-      Directory dir = FSDirectory.open(new File(fullPath));
+      if (VERBOSE) {
+        System.out.println("TEST: index " + unsupportedNames[i]);
+      }
+      File oldIndxeDir = _TestUtil.getTempDir(unsupportedNames[i]);
+      _TestUtil.unzip(getDataFile("unsupported." + unsupportedNames[i] + ".zip"), oldIndxeDir);
+      Directory dir = newFSDirectory(oldIndxeDir);
 
       IndexReader reader = null;
       IndexWriter writer = null;
@@ -168,22 +131,23 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
       try {
         writer = new IndexWriter(dir, newIndexWriterConfig(
-          TEST_VERSION_CURRENT, new MockAnalyzer())
-          .setMergeScheduler(new SerialMergeScheduler()) // no threads!
-        );
-        // TODO: Make IndexWriter fail on open!
-        if (random.nextBoolean()) {
-          writer.optimize();
-        } else {
-          reader = writer.getReader();
-        }
+          TEST_VERSION_CURRENT, new MockAnalyzer()));
         fail("IndexWriter creation should not pass for "+unsupportedNames[i]);
       } catch (IndexFormatTooOldException e) {
         // pass
+        if (VERBOSE) {
+          System.out.println("TEST: got expected exc:");
+          e.printStackTrace(System.out);
+        }
       } finally {
-        if (reader != null) reader.close();
-        reader = null;
-        if (writer != null) writer.close();
+        // we should fail to open IW, and so it should be null when we get here.
+        // However, if the test fails (i.e., IW did not fail on open), we need
+        // to close IW. However, if merges are run, IW may throw
+        // IndexFormatTooOldException, and we don't want to mask the fail()
+        // above, so close without waiting for merges.
+        if (writer != null) {
+          writer.close(false);
+        }
         writer = null;
       }
       
@@ -195,60 +159,63 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertTrue(bos.toString().contains(IndexFormatTooOldException.class.getName()));
 
       dir.close();
-      rmDir(unsupportedNames[i]);
+      _TestUtil.rmDir(oldIndxeDir);
     }
   }
   
   public void testOptimizeOldIndex() throws Exception {
     for(int i=0;i<oldNames.length;i++) {
-      unzip(getDataFile("index." + oldNames[i] + ".zip"), oldNames[i]);
-
-      String fullPath = fullDir(oldNames[i]);
-      Directory dir = FSDirectory.open(new File(fullPath));
+      if (VERBOSE) {
+        System.out.println("\nTEST: index=" + oldNames[i]);
+      }
+      File oldIndxeDir = _TestUtil.getTempDir(oldNames[i]);
+      _TestUtil.unzip(getDataFile("index." + oldNames[i] + ".zip"), oldIndxeDir);
+      Directory dir = newFSDirectory(oldIndxeDir);
 
       IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(
           TEST_VERSION_CURRENT, new MockAnalyzer()));
+      w.setInfoStream(VERBOSE ? System.out : null);
       w.optimize();
       w.close();
 
       _TestUtil.checkIndex(dir);
       
       dir.close();
-      rmDir(oldNames[i]);
+      _TestUtil.rmDir(oldIndxeDir);
     }
   }
 
   public void testAddOldIndexes() throws IOException {
     for (String name : oldNames) {
-      unzip(getDataFile("index." + name + ".zip"), name);
-      String fullPath = fullDir(name);
-      Directory dir = FSDirectory.open(new File(fullPath));
+      File oldIndxeDir = _TestUtil.getTempDir(name);
+      _TestUtil.unzip(getDataFile("index." + name + ".zip"), oldIndxeDir);
+      Directory dir = newFSDirectory(oldIndxeDir);
 
       Directory targetDir = newDirectory();
       IndexWriter w = new IndexWriter(targetDir, newIndexWriterConfig(
           TEST_VERSION_CURRENT, new MockAnalyzer()));
-      w.addIndexes(new Directory[] { dir });
+      w.addIndexes(dir);
       w.close();
 
       _TestUtil.checkIndex(targetDir);
       
       dir.close();
       targetDir.close();
-      rmDir(name);
+      _TestUtil.rmDir(oldIndxeDir);
     }
   }
 
   public void testAddOldIndexesReader() throws IOException {
     for (String name : oldNames) {
-      unzip(getDataFile("index." + name + ".zip"), name);
-      String fullPath = fullDir(name);
-      Directory dir = FSDirectory.open(new File(fullPath));
+      File oldIndxeDir = _TestUtil.getTempDir(name);
+      _TestUtil.unzip(getDataFile("index." + name + ".zip"), oldIndxeDir);
+      Directory dir = newFSDirectory(oldIndxeDir);
       IndexReader reader = IndexReader.open(dir);
       
       Directory targetDir = newDirectory();
       IndexWriter w = new IndexWriter(targetDir, newIndexWriterConfig(
           TEST_VERSION_CURRENT, new MockAnalyzer()));
-      w.addIndexes(new IndexReader[] { reader });
+      w.addIndexes(reader);
       w.close();
       reader.close();
       
@@ -256,31 +223,37 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       
       dir.close();
       targetDir.close();
-      rmDir(name);
+      _TestUtil.rmDir(oldIndxeDir);
     }
   }
 
   public void testSearchOldIndex() throws IOException {
     for(int i=0;i<oldNames.length;i++) {
-      unzip(getDataFile("index." + oldNames[i] + ".zip"), oldNames[i]);
-      searchIndex(oldNames[i], oldNames[i]);
-      rmDir(oldNames[i]);
+      File oldIndxeDir = _TestUtil.getTempDir(oldNames[i]);
+      _TestUtil.unzip(getDataFile("index." + oldNames[i] + ".zip"), oldIndxeDir);
+      searchIndex(oldIndxeDir, oldNames[i]);
+      _TestUtil.rmDir(oldIndxeDir);
     }
   }
 
   public void testIndexOldIndexNoAdds() throws IOException {
     for(int i=0;i<oldNames.length;i++) {
-      unzip(getDataFile("index." + oldNames[i] + ".zip"), oldNames[i]);
-      changeIndexNoAdds(random, oldNames[i]);
-      rmDir(oldNames[i]);
+      File oldIndxeDir = _TestUtil.getTempDir(oldNames[i]);
+      _TestUtil.unzip(getDataFile("index." + oldNames[i] + ".zip"), oldIndxeDir);
+      changeIndexNoAdds(random, oldIndxeDir);
+      _TestUtil.rmDir(oldIndxeDir);
     }
   }
 
   public void testIndexOldIndex() throws IOException {
     for(int i=0;i<oldNames.length;i++) {
-      unzip(getDataFile("index." + oldNames[i] + ".zip"), oldNames[i]);
-      changeIndexWithAdds(random, oldNames[i]);
-      rmDir(oldNames[i]);
+      if (VERBOSE) {
+        System.out.println("TEST: oldName=" + oldNames[i]);
+      }
+      File oldIndxeDir = _TestUtil.getTempDir(oldNames[i]);
+      _TestUtil.unzip(getDataFile("index." + oldNames[i] + ".zip"), oldIndxeDir);
+      changeIndexWithAdds(random, oldIndxeDir, oldNames[i]);
+      _TestUtil.rmDir(oldIndxeDir);
     }
   }
 
@@ -293,13 +266,11 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     }
   }
 
-  public void searchIndex(String dirName, String oldName) throws IOException {
+  public void searchIndex(File indexDir, String oldName) throws IOException {
     //QueryParser parser = new QueryParser("contents", new MockAnalyzer());
     //Query query = parser.parse("handle:1");
 
-    dirName = fullDir(dirName);
-
-    Directory dir = FSDirectory.open(new File(dirName));
+    Directory dir = newFSDirectory(indexDir);
     IndexSearcher searcher = new IndexSearcher(dir, true);
     IndexReader reader = searcher.getIndexReader();
 
@@ -329,6 +300,10 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
           f = d.getField("fie\u2C77ld");
           assertEquals("field with non-ascii name", f.stringValue());
         }
+
+        TermFreqVector tfv = reader.getTermFreqVector(i, "utf8");
+        assertNotNull("docID=" + i + " index=" + indexDir.getName(), tfv);
+        assertTrue(tfv instanceof TermPositionVector);
       } else
         // Only ID 7 is deleted
         assertEquals(7, i);
@@ -338,7 +313,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
     // First document should be #21 since it's norm was
     // increased:
-    Document d = searcher.doc(hits[0].doc);
+    Document d = searcher.getIndexReader().document(hits[0].doc);
     assertEquals("didn't get the right document first", "21", d.get("id"));
 
     doTestHits(hits, 34, searcher.getIndexReader());
@@ -360,13 +335,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     return v0 - v1;
   }
 
-  public void changeIndexWithAdds(Random random, String dirName) throws IOException {
-    String origDirName = dirName;
-    dirName = fullDir(dirName);
+  public void changeIndexWithAdds(Random random, File oldIndexDir, String origOldName) throws IOException {
 
-    Directory dir = FSDirectory.open(new File(dirName));
+    Directory dir = newFSDirectory(oldIndexDir);
     // open writer
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setOpenMode(OpenMode.APPEND));
+    writer.setInfoStream(VERBOSE ? System.out : null);
     // add 10 docs
     for(int i=0;i<10;i++) {
       addDoc(writer, 35+i);
@@ -374,7 +348,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
     // make sure writer sees right total -- writer seems not to know about deletes in .del?
     final int expected;
-    if (compare(origDirName, "24") < 0) {
+    if (compare(origOldName, "24") < 0) {
       expected = 44;
     } else {
       expected = 45;
@@ -385,18 +359,18 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     // make sure searching sees right # hits
     IndexSearcher searcher = new IndexSearcher(dir, true);
     ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
-    Document d = searcher.doc(hits[0].doc);
+    Document d = searcher.getIndexReader().document(hits[0].doc);
     assertEquals("wrong first document", "21", d.get("id"));
     doTestHits(hits, 44, searcher.getIndexReader());
     searcher.close();
 
     // make sure we can do delete & setNorm against this segment:
     IndexReader reader = IndexReader.open(dir, false);
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
     Term searchTerm = new Term("id", "6");
     int delCount = reader.deleteDocuments(searchTerm);
     assertEquals("wrong delete count", 1, delCount);
-    reader.setNorm(searcher.search(new TermQuery(new Term("id", "22")), 10).scoreDocs[0].doc, "content", (float) 2.0);
+    reader.setNorm(searcher.search(new TermQuery(new Term("id", "22")), 10).scoreDocs[0].doc, "content", searcher.getSimilarityProvider().get("content").encodeNormValue(2.0f));
     reader.close();
     searcher.close();
 
@@ -425,11 +399,9 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     dir.close();
   }
 
-  public void changeIndexNoAdds(Random random, String dirName) throws IOException {
+  public void changeIndexNoAdds(Random random, File oldIndexDir) throws IOException {
 
-    dirName = fullDir(dirName);
-
-    Directory dir = FSDirectory.open(new File(dirName));
+    Directory dir = newFSDirectory(oldIndexDir);
 
     // make sure searching sees right # hits
     IndexSearcher searcher = new IndexSearcher(dir, true);
@@ -444,7 +416,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     Term searchTerm = new Term("id", "6");
     int delCount = reader.deleteDocuments(searchTerm);
     assertEquals("wrong delete count", 1, delCount);
-    reader.setNorm(22, "content", (float) 2.0);
+    reader.setNorm(22, "content", searcher.getSimilarityProvider().get("content").encodeNormValue(2.0f));
     reader.close();
 
     // make sure they "took":
@@ -472,16 +444,14 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     dir.close();
   }
 
-  public void createIndex(Random random, String dirName, boolean doCFS) throws IOException {
+  public File createIndex(Random random, String dirName, boolean doCFS) throws IOException {
 
-    rmDir(dirName);
-
-    dirName = fullDir(dirName);
-
-    Directory dir = FSDirectory.open(new File(dirName));
+    File indexDir = _TestUtil.getTempDir(dirName);
+    _TestUtil.rmDir(indexDir);
+    Directory dir = newFSDirectory(indexDir);
+    
     IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(10);
     ((LogMergePolicy) conf.getMergePolicy()).setUseCompoundFile(doCFS);
-    ((LogMergePolicy) conf.getMergePolicy()).setUseCompoundDocStore(doCFS);
     IndexWriter writer = new IndexWriter(dir, conf);
     
     for(int i=0;i<35;i++) {
@@ -493,7 +463,6 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     // open fresh writer so we get no prx file in the added segment
     conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(10);
     ((LogMergePolicy) conf.getMergePolicy()).setUseCompoundFile(doCFS);
-    ((LogMergePolicy) conf.getMergePolicy()).setUseCompoundDocStore(doCFS);
     writer = new IndexWriter(dir, conf);
     addNoProxDoc(writer);
     writer.close();
@@ -505,23 +474,34 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     assertEquals("didn't delete the right number of documents", 1, delCount);
 
     // Set one norm so we get a .s0 file:
-    reader.setNorm(21, "content", (float) 1.5);
+    reader.setNorm(21, "content", conf.getSimilarityProvider().get("content").encodeNormValue(1.5f));
     reader.close();
+    dir.close();
+    
+    return indexDir;
   }
 
   /* Verifies that the expected file names were produced */
 
   public void testExactFileNames() throws IOException {
 
-    String outputDir = "lucene.backwardscompat0.index";
-    rmDir(outputDir);
+    String outputDirName = "lucene.backwardscompat0.index";
+    File outputDir = _TestUtil.getTempDir(outputDirName);
+    _TestUtil.rmDir(outputDir);
 
     try {
-      Directory dir = FSDirectory.open(new File(fullDir(outputDir)));
+      Directory dir = newFSDirectory(outputDir);
 
-      IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setMaxBufferedDocs(-1).setRAMBufferSizeMB(16.0));
-      ((LogMergePolicy) writer.getMergePolicy()).setUseCompoundFile(true);
-      ((LogMergePolicy) writer.getMergePolicy()).setMergeFactor(10);
+      LogMergePolicy mergePolicy = newLogMergePolicy(true, 10);
+      mergePolicy.setNoCFSRatio(1); // This test expects all of its segments to be in CFS
+
+      IndexWriter writer = new IndexWriter(
+          dir,
+          newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).
+              setMaxBufferedDocs(-1).
+              setRAMBufferSizeMB(16.0).
+              setMergePolicy(mergePolicy)
+      );
       for(int i=0;i<35;i++) {
         addDoc(writer, i);
       }
@@ -535,7 +515,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertEquals("didn't delete the right number of documents", 1, delCount);
 
       // Set one norm so we get a .s0 file:
-      reader.setNorm(21, "content", (float) 1.5);
+      SimilarityProvider sim = new DefaultSimilarity();
+      reader.setNorm(21, "content", sim.get("content").encodeNormValue(1.5f));
       reader.close();
 
       // The numbering of fields can vary depending on which
@@ -572,7 +553,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       }
       dir.close();
     } finally {
-      rmDir(outputDir);
+      _TestUtil.rmDir(outputDir);
     }
   }
 
@@ -613,23 +594,6 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     writer.addDocument(doc);
   }
 
-  private void rmDir(String dir) throws IOException {
-    File fileDir = new File(fullDir(dir));
-    if (fileDir.exists()) {
-      File[] files = fileDir.listFiles();
-      if (files != null) {
-        for (int i = 0; i < files.length; i++) {
-          files[i].delete();
-        }
-      }
-      fileDir.delete();
-    }
-  }
-
-  public static String fullDir(String dirName) throws IOException {
-    return new File(TEMP_DIR, dirName).getCanonicalPath();
-  }
-
   private int countDocs(DocsEnum docs) throws IOException {
     int count = 0;
     while((docs.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
@@ -641,9 +605,9 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   // flex: test basics of TermsEnum api on non-flex index
   public void testNextIntoWrongField() throws Exception {
     for(int i=0;i<oldNames.length;i++) {
-      unzip(getDataFile("index." + oldNames[i] + ".zip"), oldNames[i]);
-      String fullPath = fullDir(oldNames[i]);
-      Directory dir = FSDirectory.open(new File(fullPath));
+      File oldIndexDir = _TestUtil.getTempDir(oldNames[i]);
+    	_TestUtil.unzip(getDataFile("index." + oldNames[i] + ".zip"), oldIndexDir);
+      Directory dir = newFSDirectory(oldIndexDir);
       IndexReader r = IndexReader.open(dir);
       TermsEnum terms = MultiFields.getFields(r).terms("content").iterator();
       BytesRef t = terms.next();
@@ -680,16 +644,16 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
       r.close();
       dir.close();
-      rmDir(oldNames[i]);
+      _TestUtil.rmDir(oldIndexDir);
     }
   }
   
   public void testNumericFields() throws Exception {
     for(int i=0;i<oldNames.length;i++) {
       
-      unzip(getDataFile("index." + oldNames[i] + ".zip"), oldNames[i]);
-      String fullPath = fullDir(oldNames[i]);
-      Directory dir = FSDirectory.open(new File(fullPath));
+      File oldIndexDir = _TestUtil.getTempDir(oldNames[i]);
+      _TestUtil.unzip(getDataFile("index." + oldNames[i] + ".zip"), oldIndexDir);
+      Directory dir = newFSDirectory(oldIndexDir);
       IndexSearcher searcher = new IndexSearcher(dir, true);
       
       for (int id=10; id<15; id++) {
@@ -724,7 +688,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       
       searcher.close();
       dir.close();
-      rmDir(oldNames[i]);
+      _TestUtil.rmDir(oldIndexDir);
     }
   }
 

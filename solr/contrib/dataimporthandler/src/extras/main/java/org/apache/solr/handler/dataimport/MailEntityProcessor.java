@@ -38,7 +38,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
- * An EntityProcessor instance which can index emails along with their attachments from POP3 or IMAP sources. Refer to
+ * An {@link EntityProcessor} instance which can index emails along with their attachments from POP3 or IMAP sources. Refer to
  * <a href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a> for more
  * details. <b>This API is experimental and subject to change</b>
  *
@@ -51,6 +51,7 @@ public class MailEntityProcessor extends EntityProcessorBase {
     public SearchTerm getCustomSearch(Folder folder);
   }
 
+  @Override
   public void init(Context context) {
     super.init(context);
     // set attributes using  XXX getXXXFromContext(attribute, defualtValue);
@@ -95,6 +96,7 @@ public class MailEntityProcessor extends EntityProcessorBase {
     logConfig();
   }
 
+  @Override
   public Map<String, Object> nextRow() {
     Message mail;
     Map<String, Object> row = null;

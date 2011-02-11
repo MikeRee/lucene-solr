@@ -17,10 +17,13 @@ package org.apache.lucene.search.regex;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.Terms;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.search.IndexSearcher;
@@ -28,6 +31,7 @@ import org.apache.lucene.index.TermsEnum;
 
 import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.LuceneTestCase;
 
 public class TestRegexQuery extends LuceneTestCase {
@@ -47,7 +51,7 @@ public class TestRegexQuery extends LuceneTestCase {
     writer.addDocument(doc);
     reader = writer.getReader();
     writer.close();
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
   }
 
   @Override
@@ -70,17 +74,18 @@ public class TestRegexQuery extends LuceneTestCase {
   }
 
   private int  spanRegexQueryNrHits(String regex1, String regex2, int slop, boolean ordered) throws Exception {
-    SpanRegexQuery srq1 = new SpanRegexQuery( newTerm(regex1));
-    SpanRegexQuery srq2 = new SpanRegexQuery( newTerm(regex2));
+    SpanQuery srq1 = new SpanMultiTermQueryWrapper<RegexQuery>(new RegexQuery(newTerm(regex1)));
+    SpanQuery srq2 = new SpanMultiTermQueryWrapper<RegexQuery>(new RegexQuery(newTerm(regex2)));
     SpanNearQuery query = new SpanNearQuery( new SpanQuery[]{srq1, srq2}, slop, ordered);
-    
+
     return searcher.search(query, null, 1000).totalHits;
   }
 
   public void testMatchAll() throws Exception {
-    TermsEnum terms = new RegexQuery(new Term(FN, "jum.")).getTermsEnum(searcher.getIndexReader());
+    Terms terms = MultiFields.getTerms(searcher.getIndexReader(), FN);
+    TermsEnum te = new RegexQuery(new Term(FN, "jum.")).getTermsEnum(terms, new AttributeSource() /*dummy*/);
     // no term should match
-    assertNull(terms.next());
+    assertNull(te.next());
   }
 
   public void testRegex1() throws Exception {

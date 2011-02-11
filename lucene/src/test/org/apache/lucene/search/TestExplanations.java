@@ -68,7 +68,7 @@ public class TestExplanations extends LuceneTestCase {
   public void setUp() throws Exception {
     super.setUp();
     directory = newDirectory();
-    RandomIndexWriter writer= new RandomIndexWriter(random, directory);
+    RandomIndexWriter writer= new RandomIndexWriter(random, directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setMergePolicy(newInOrderLogMergePolicy()));
     for (int i = 0; i < docFields.length; i++) {
       Document doc = new Document();
       doc.add(newField(KEY, ""+i, Field.Store.NO, Field.Index.NOT_ANALYZED));
@@ -77,7 +77,7 @@ public class TestExplanations extends LuceneTestCase {
     }
     reader = writer.getReader();
     writer.close();
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
   }
 
   protected String[] docFields = {
@@ -98,7 +98,7 @@ public class TestExplanations extends LuceneTestCase {
   
   /** check the expDocNrs first, then check the query (and the explanations) */
   public void qtest(Query q, int[] expDocNrs) throws Exception {
-    CheckHits.checkHitCollector(q, FIELD, searcher, expDocNrs);
+    CheckHits.checkHitCollector(random, q, FIELD, searcher, expDocNrs);
   }
 
   /**
@@ -165,7 +165,7 @@ public class TestExplanations extends LuceneTestCase {
   }
   /** MACRO for SpanOrQuery containing two SpanQueries */
   public SpanOrQuery sor(SpanQuery s, SpanQuery e) {
-    return new SpanOrQuery(new SpanQuery[] { s, e });
+    return new SpanOrQuery(s, e);
   }
   
   /** MACRO for SpanOrQuery containing three SpanTerm queries */
@@ -174,7 +174,7 @@ public class TestExplanations extends LuceneTestCase {
   }
   /** MACRO for SpanOrQuery containing two SpanQueries */
   public SpanOrQuery sor(SpanQuery s, SpanQuery m, SpanQuery e) {
-    return new SpanOrQuery(new SpanQuery[] { s, m, e });
+    return new SpanOrQuery(s, m, e);
   }
   
   /** MACRO for SpanNearQuery containing two SpanTerm queries */

@@ -17,10 +17,6 @@
 
 package org.apache.solr.search.function;
 
-import org.apache.lucene.index.IndexReader;
-
-import java.io.IOException;
-
 /** Function to raise the base "a" to the power "b"
  */
 public class PowFloatFunction extends DualFloatFunction {
@@ -32,10 +28,12 @@ public class PowFloatFunction extends DualFloatFunction {
     super(a,b);
   }
 
+  @Override
   protected String name() {
     return "pow";
   }
 
+  @Override
   protected float func(int doc, DocValues aVals, DocValues bVals) {
     return (float)Math.pow(aVals.floatVal(doc), bVals.floatVal(doc));
   }

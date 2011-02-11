@@ -32,7 +32,6 @@ import org.apache.noggit.CharArr;
 import org.apache.solr.analysis.*;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 import org.apache.solr.search.MutableValueDate;
 import org.apache.solr.search.MutableValueLong;
 import org.apache.solr.search.QParser;
@@ -122,7 +121,10 @@ public class TrieField extends FieldType {
     }
   }
 
+  @Override
   public SortField getSortField(SchemaField field, boolean top) {
+    field.checkSortability();
+
     int flags = CachedArrayCreator.CACHE_VALUES_AND_BITS;
     Object missingValue = null;
     boolean sortMissingLast  = on( SORT_MISSING_LAST,  properties );
@@ -175,7 +177,8 @@ public class TrieField extends FieldType {
     }
   }
 
-  public ValueSource getValueSource(SchemaField field) {
+  @Override
+  public ValueSource getValueSource(SchemaField field, QParser qparser) {
     int flags = CachedArrayCreator.CACHE_VALUES_AND_BITS;
     switch (type) {
       case INTEGER:
@@ -193,34 +196,8 @@ public class TrieField extends FieldType {
     }
   }
 
-  public void write(XMLWriter xmlWriter, String name, Fieldable f) throws IOException {
-    byte[] arr = f.getBinaryValue();
-    if (arr==null) {
-      xmlWriter.writeStr(name, badFieldString(f));
-      return;
-    }
 
-    switch (type) {
-      case INTEGER:
-        xmlWriter.writeInt(name,toInt(arr));
-        break;
-      case FLOAT:
-        xmlWriter.writeFloat(name,toFloat(arr));
-        break;
-      case LONG:
-        xmlWriter.writeLong(name,toLong(arr));
-        break;
-      case DOUBLE:
-        xmlWriter.writeDouble(name,toDouble(arr));
-        break;
-      case DATE:
-        xmlWriter.writeDate(name,new Date(toLong(arr)));
-        break;
-      default:
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + f.name());
-    }
-  }
-
+  @Override
   public void write(TextResponseWriter writer, String name, Fieldable f) throws IOException {
     byte[] arr = f.getBinaryValue();
     if (arr==null) {
@@ -480,13 +457,31 @@ public class TrieField extends FieldType {
   }
 
   @Override
+  public Object toObject(SchemaField sf, BytesRef term) {
+    switch (type) {
+      case INTEGER:
+        return NumericUtils.prefixCodedToInt(term);
+      case FLOAT:
+        return NumericUtils.sortableIntToFloat(NumericUtils.prefixCodedToInt(term));
+      case LONG:
+        return NumericUtils.prefixCodedToLong(term);
+      case DOUBLE:
+        return NumericUtils.sortableLongToDouble(NumericUtils.prefixCodedToLong(term));
+      case DATE:
+        return new Date(NumericUtils.prefixCodedToLong(term));
+      default:
+        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + type);
+    }
+  }
+
+  @Override
   public String storedToIndexed(Fieldable f) {
     // TODO: optimize to remove redundant string conversion
     return readableToIndexed(storedToReadable(f));
   }
 
   @Override
-  public Field createField(SchemaField field, String externalVal, float boost) {
+  public Fieldable createField(SchemaField field, String externalVal, float boost) {
     boolean indexed = field.indexed();
     boolean stored = field.stored();
 
@@ -534,7 +529,7 @@ public class TrieField extends FieldType {
 
     Field f;
     if (stored) {
-      f = new Field(field.getName(), arr, Field.Store.YES);
+      f = new Field(field.getName(), arr);
       if (indexed) f.setTokenStream(ts);
     } else {
       f = new Field(field.getName(), ts);
@@ -595,6 +590,7 @@ class TrieDateFieldSource extends LongFieldSource {
     super(creator);
   }
 
+  @Override
   public String description() {
     return "date(" + field + ')';
   }

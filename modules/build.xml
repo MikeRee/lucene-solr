@@ -22,6 +22,7 @@
     <sequential>
       <subant target="test" inheritall="false" failonerror="true">
         <fileset dir="analysis" includes="build.xml" />
+        <fileset dir="benchmark" includes="build.xml" />
       </subant>
     </sequential>
   </target>
@@ -30,6 +31,7 @@
     <sequential>
       <subant target="compile" inheritall="false" failonerror="true">
         <fileset dir="analysis" includes="build.xml" />
+        <fileset dir="benchmark" includes="build.xml" />
       </subant>
     </sequential>
   </target>
@@ -38,6 +40,7 @@
     <sequential>
       <subant target="compile-test" inheritall="false" failonerror="true">
         <fileset dir="analysis" includes="build.xml" />
+        <fileset dir="benchmark" includes="build.xml" />
       </subant>
     </sequential>
   </target>
@@ -46,22 +49,27 @@
     <sequential>
       <subant target="javadocs" inheritall="false" failonerror="true">
         <fileset dir="analysis" includes="build.xml" />
+        <fileset dir="benchmark" includes="build.xml" />
       </subant>
     </sequential>
   </target>
 
   <target name="generate-maven-artifacts" description="Generate Maven Artifacts for Modules">
     <sequential>
+      <ant target="get-maven-poms" dir=".."/>
       <subant target="dist-maven" inheritall="false" failonerror="true">
         <fileset dir="analysis" includes="build.xml" />
+        <fileset dir="benchmark" includes="build.xml" />
       </subant>
     </sequential>
   </target>
 
   <target name="clean" description="Clean all modules">
     <sequential>
+      <delete dir="dist"/>
       <subant target="clean" inheritall="false" failonerror="true">
         <fileset dir="analysis" includes="build.xml" />
+        <fileset dir="benchmark" includes="build.xml" />
       </subant>
     </sequential>
   </target>

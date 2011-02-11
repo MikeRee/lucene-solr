@@ -22,19 +22,21 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericField;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.SlowMultiReaderWrapper;
+import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NumericUtils;
 import org.apache.lucene.util._TestUtil;
-
-import org.junit.Test;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import static org.junit.Assert.*;
+import org.junit.Test;
 
 public class TestNumericRangeQuery32 extends LuceneTestCase {
   // distance of entries
@@ -53,7 +55,8 @@ public class TestNumericRangeQuery32 extends LuceneTestCase {
     directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, directory,
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer())
-        .setMaxBufferedDocs(_TestUtil.nextInt(random, 50, 1000)));
+        .setMaxBufferedDocs(_TestUtil.nextInt(random, 50, 1000))
+        .setMergePolicy(newInOrderLogMergePolicy()));
     
     NumericField
       field8 = new NumericField("field8", 8, Field.Store.YES, true),
@@ -86,7 +89,7 @@ public class TestNumericRangeQuery32 extends LuceneTestCase {
     }
   
     reader = writer.getReader();
-    searcher=new IndexSearcher(reader);
+    searcher=newSearcher(reader);
     writer.close();
   }
   
@@ -175,14 +178,15 @@ public class TestNumericRangeQuery32 extends LuceneTestCase {
   
   @Test
   public void testInverseRange() throws Exception {
+    AtomicReaderContext context = (AtomicReaderContext) new SlowMultiReaderWrapper(searcher.getIndexReader()).getTopReaderContext();
     NumericRangeFilter<Integer> f = NumericRangeFilter.newIntRange("field8", 8, 1000, -1000, true, true);
-    assertSame("A inverse range should return the EMPTY_DOCIDSET instance", DocIdSet.EMPTY_DOCIDSET, f.getDocIdSet(searcher.getIndexReader()));
+    assertSame("A inverse range should return the EMPTY_DOCIDSET instance", DocIdSet.EMPTY_DOCIDSET, f.getDocIdSet(context));
     f = NumericRangeFilter.newIntRange("field8", 8, Integer.MAX_VALUE, null, false, false);
     assertSame("A exclusive range starting with Integer.MAX_VALUE should return the EMPTY_DOCIDSET instance",
-      DocIdSet.EMPTY_DOCIDSET, f.getDocIdSet(searcher.getIndexReader()));
+               DocIdSet.EMPTY_DOCIDSET, f.getDocIdSet(context));
     f = NumericRangeFilter.newIntRange("field8", 8, null, Integer.MIN_VALUE, false, false);
     assertSame("A exclusive range ending with Integer.MIN_VALUE should return the EMPTY_DOCIDSET instance",
-      DocIdSet.EMPTY_DOCIDSET, f.getDocIdSet(searcher.getIndexReader()));
+               DocIdSet.EMPTY_DOCIDSET, f.getDocIdSet(context));
   }
   
   @Test
@@ -563,7 +567,8 @@ public class TestNumericRangeQuery32 extends LuceneTestCase {
   private void testEnum(int lower, int upper) throws Exception {
     NumericRangeQuery<Integer> q = NumericRangeQuery.newIntRange("field4", 4,
         lower, upper, true, true);
-    TermsEnum termEnum = q.getTermsEnum(searcher.getIndexReader());
+    Terms terms = MultiFields.getTerms(searcher.getIndexReader(), "field4");
+    TermsEnum termEnum = q.getTermsEnum(terms);
     int count = 0;
     while (termEnum.next() != null) {
       final BytesRef t = termEnum.term();

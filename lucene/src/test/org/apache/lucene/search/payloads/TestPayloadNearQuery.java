@@ -26,16 +26,16 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Payload;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.DefaultSimilarity;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.QueryUtils;
 import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanNearQuery;
@@ -105,7 +105,7 @@ public class TestPayloadNearQuery extends LuceneTestCase {
     directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, directory, 
         newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer())
-        .setSimilarity(similarity));
+        .setSimilarityProvider(similarity));
     //writer.infoStream = System.out;
     for (int i = 0; i < 1000; i++) {
       Document doc = new Document();
@@ -117,8 +117,8 @@ public class TestPayloadNearQuery extends LuceneTestCase {
     reader = writer.getReader();
     writer.close();
 
-    searcher = new IndexSearcher(reader);
-    searcher.setSimilarity(similarity);
+    searcher = newSearcher(reader);
+    searcher.setSimilarityProvider(similarity);
   }
 
   @Override
@@ -301,13 +301,13 @@ public class TestPayloadNearQuery extends LuceneTestCase {
 
     @Override public float scorePayload(int docId, String fieldName, int start, int end, byte[] payload, int offset, int length) {
       //we know it is size 4 here, so ignore the offset/length
-      return payload[0];
+      return payload[offset];
     }
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //Make everything else 1 so we see the effect of the payload
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    @Override public float lengthNorm(String fieldName, int numTerms) {
-      return 1.0f;
+    @Override public float computeNorm(String fieldName, FieldInvertState state) {
+      return state.getBoost();
     }
 
     @Override public float queryNorm(float sumOfSquaredWeights) {
@@ -325,7 +325,7 @@ public class TestPayloadNearQuery extends LuceneTestCase {
       return 1.0f;
     }
     // idf used for phrase queries
-    @Override public IDFExplanation idfExplain(Collection<Term> terms, Searcher searcher) throws IOException {
+    @Override public IDFExplanation idfExplain(Collection<Term> terms, IndexSearcher searcher) throws IOException {
       return new IDFExplanation() {
         @Override
         public float getIdf() {

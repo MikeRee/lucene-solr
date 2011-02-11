@@ -283,7 +283,7 @@ class SolrZkServerProps extends QuorumPeerConfig {
     // multiple matches... try to figure out by port.
     for (QuorumPeer.QuorumServer server : slist.values()) {
       if (server.addr.equals(thisAddr)) {
-        if (clientPortAddress != null || clientPortAddress.getPort() <= 0)
+        if (clientPortAddress == null || clientPortAddress.getPort() <= 0)
           setClientPort(server.addr.getPort() - 1);
         return server.id;
       }
@@ -319,6 +319,7 @@ class SolrZkServerProps extends QuorumPeerConfig {
    * @throws java.io.IOException
    * @throws ConfigException
    */
+  @Override
   public void parseProperties(Properties zkProp)
       throws IOException, ConfigException {
     for (Entry<Object, Object> entry : zkProp.entrySet()) {

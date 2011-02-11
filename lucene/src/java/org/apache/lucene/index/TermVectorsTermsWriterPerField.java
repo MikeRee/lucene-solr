@@ -24,6 +24,7 @@ import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.RamUsageEstimator;
 
 final class TermVectorsTermsWriterPerField extends TermsHashConsumerPerField {
 
@@ -280,6 +281,7 @@ final class TermVectorsTermsWriterPerField extends TermsHashConsumerPerField {
     int[] lastOffsets;                                 // Last offset we saw
     int[] lastPositions;                               // Last position where this term occurred
     
+    @Override
     ParallelPostingsArray newInstance(int size) {
       return new TermVectorsPostingsArray(size);
     }
@@ -298,7 +300,7 @@ final class TermVectorsTermsWriterPerField extends TermsHashConsumerPerField {
 
     @Override
     int bytesPerPosting() {
-      return super.bytesPerPosting() + 3 * DocumentsWriter.INT_NUM_BYTE;
+      return super.bytesPerPosting() + 3 * RamUsageEstimator.NUM_BYTES_INT;
     }
   }
 }

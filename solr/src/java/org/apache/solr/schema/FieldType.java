@@ -17,42 +17,34 @@
 
 package org.apache.solr.schema;
 
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
-import org.apache.lucene.search.SortField;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.TermRangeQuery;
-import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.noggit.CharArr;
-import org.apache.solr.search.function.ValueSource;
-import org.apache.solr.search.function.OrdFieldSource;
-import org.apache.solr.search.Sorting;
-import org.apache.solr.search.QParser;
-import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 import org.apache.solr.analysis.SolrAnalyzer;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.params.SolrParams;
-import org.apache.solr.common.params.MapSolrParams;
-
+import org.apache.solr.response.TextResponseWriter;
+import org.apache.solr.search.QParser;
+import org.apache.solr.search.Sorting;
+import org.apache.solr.search.function.ValueSource;
 import org.apache.solr.util.ByteUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.ArrayList;
-import java.io.Reader;
+
 import java.io.IOException;
+import java.io.Reader;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Base class for all field types used by an index schema.
@@ -193,6 +185,7 @@ public abstract class FieldType extends FieldProperties {
     this.typeName = typeName;
   }
 
+  @Override
   public String toString() {
     return typeName + "{class=" + this.getClass().getName()
 //            + propertiesToString(properties)
@@ -229,7 +222,7 @@ public abstract class FieldType extends FieldProperties {
    *
    *
    */
-  public Field createField(SchemaField field, String externalVal, float boost) {
+  public Fieldable createField(SchemaField field, String externalVal, float boost) {
     if (!field.indexed() && !field.stored()) {
       if (log.isTraceEnabled())
         log.trace("Ignoring unindexed/unstored field: " + field);
@@ -260,9 +253,9 @@ public abstract class FieldType extends FieldProperties {
    * @param omitNorms true if norms should be omitted
    * @param omitTFPos true if term freq and position should be omitted.
    * @param boost The boost value
-   * @return the {@link org.apache.lucene.document.Field}.
+   * @return the {@link org.apache.lucene.document.Fieldable}.
    */
-  protected Field createField(String name, String val, Field.Store storage, Field.Index index,
+  protected Fieldable createField(String name, String val, Field.Store storage, Field.Index index,
                                     Field.TermVector vec, boolean omitNorms, boolean omitTFPos, float boost){
     Field f = new Field(name,
                         val,
@@ -286,7 +279,7 @@ public abstract class FieldType extends FieldProperties {
    * @see #isPolyField()
    */
   public Fieldable[] createFields(SchemaField field, String externalVal, float boost) {
-    Field f = createField( field, externalVal, boost);
+    Fieldable f = createField( field, externalVal, boost);
     return f==null ? new Fieldable[]{} : new Fieldable[]{f};
   }
 
@@ -346,6 +339,13 @@ public abstract class FieldType extends FieldProperties {
     return toExternal(f); // by default use the string
   }
 
+  public Object toObject(SchemaField sf, BytesRef term) {
+    CharArr ext = new CharArr(term.length);
+    indexedToReadable(term, ext);
+    Fieldable f = createField(sf, ext.toString(), 1.0f);
+    return toObject(f);
+  }
+
   /** Given an indexed term, return the human readable representation */
   public String indexedToReadable(String indexedForm) {
     return indexedForm;
@@ -391,6 +391,7 @@ public abstract class FieldType extends FieldProperties {
       this.maxChars=maxChars;
     }
 
+    @Override
     public TokenStreamInfo getStream(String fieldName, Reader reader) {
       Tokenizer ts = new Tokenizer(reader) {
         final char[] cbuf = new char[maxChars];
@@ -469,11 +470,6 @@ public abstract class FieldType extends FieldProperties {
   }
 
   /**
-   * Renders the specified field as XML
-   */
-  public abstract void write(XMLWriter xmlWriter, String name, Fieldable f) throws IOException;
-
-  /**
    * calls back to TextResponseWriter to write the field value
    */
   public abstract void write(TextResponseWriter writer, String name, Fieldable f) throws IOException;
@@ -482,13 +478,17 @@ public abstract class FieldType extends FieldProperties {
   /**
    * Returns the SortField instance that should be used to sort fields
    * of this type.
+   * @see SchemaField#checkSortability
    */
   public abstract SortField getSortField(SchemaField field, boolean top);
 
   /**
-   * Utility usable by subclasses when they want to get basic String sorting.
+   * Utility usable by subclasses when they want to get basic String sorting 
+   * using common checks.
+   * @see SchemaField#checkSortability
    */
   protected SortField getStringSort(SchemaField field, boolean reverse) {
+    field.checkSortability();
     return Sorting.getStringSortField(field.name, reverse, field.sortMissingLast(),field.sortMissingFirst());
   }
 
@@ -496,17 +496,9 @@ public abstract class FieldType extends FieldProperties {
    *  Lucene FieldCache.)
    */
   public ValueSource getValueSource(SchemaField field, QParser parser) {
-    return getValueSource(field);
+    return new StrFieldSource(field.name);
   }
 
-
-  /**
-   * @deprecated use {@link #getValueSource(SchemaField, QParser)}
-   */
-  @Deprecated
-  public ValueSource getValueSource(SchemaField field) {
-    return new OrdFieldSource(field.name);
-  }
 
   /**
    * Returns a Query instance for doing range searches on this field type. {@link org.apache.solr.search.SolrQueryParser}
@@ -525,7 +517,6 @@ public abstract class FieldType extends FieldProperties {
    * @param maxInclusive whether the maximum of the range is inclusive or not
    *  @return a Query instance to perform range search according to given parameters
    *
-   * @see org.apache.solr.search.SolrQueryParser#getRangeQuery(String, String, String, boolean)
    */
   public Query getRangeQuery(QParser parser, SchemaField field, String part1, String part2, boolean minInclusive, boolean maxInclusive) {
     // constant score mode is now enabled per default
@@ -545,6 +536,8 @@ public abstract class FieldType extends FieldProperties {
    * 
    */
   public Query getFieldQuery(QParser parser, SchemaField field, String externalVal) {
-    return new TermQuery(new Term(field.getName(), toInternal(externalVal)));
+    BytesRef br = new BytesRef();
+    readableToIndexed(externalVal, br);
+    return new TermQuery(new Term(field.getName(), br));
   }
 }

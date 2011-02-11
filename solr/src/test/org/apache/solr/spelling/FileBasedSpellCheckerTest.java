@@ -20,13 +20,12 @@ package org.apache.solr.spelling;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
-import org.apache.lucene.index.IndexReader;
+import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.util.RefCounted;
 import org.apache.lucene.analysis.Token;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 import java.io.File;
 import java.util.Date;
@@ -66,8 +65,7 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     spellchecker.add("classname", FileBasedSpellChecker.class.getName());
 
     spellchecker.add(SolrSpellChecker.DICTIONARY_NAME, "external");
-    File spelling = new File("spellings.txt");
-    spellchecker.add(AbstractLuceneSpellChecker.LOCATION, spelling.getAbsolutePath());
+    spellchecker.add(AbstractLuceneSpellChecker.LOCATION, "spellings.txt");
     spellchecker.add(IndexBasedSpellChecker.FIELD, "teststop");
     spellchecker.add(FileBasedSpellChecker.SOURCE_FILE_CHAR_ENCODING, "UTF-8");
     File indexDir = new File(TEMP_DIR, "spellingIdx" + new Date().getTime());
@@ -78,9 +76,9 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     assertTrue(dictName + " is not equal to " + "external", dictName.equals("external") == true);
     checker.build(core, null);
 
-    IndexReader reader = core.getSearcher().get().getReader();
+    RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
     Collection<Token> tokens = queryConverter.convert("fob");
-    SpellingOptions spellOpts = new SpellingOptions(tokens, reader);
+    SpellingOptions spellOpts = new SpellingOptions(tokens, searcher.get().getIndexReader());
     SpellingResult result = checker.getSuggestions(spellOpts);
     assertTrue("result is null and it shouldn't be", result != null);
     Map<String, Integer> suggestions = result.get(tokens.iterator().next());
@@ -93,7 +91,7 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     assertTrue("result is null and it shouldn't be", result != null);
     suggestions = result.get(tokens.iterator().next());
     assertTrue("suggestions is not null and it should be", suggestions == null);
-
+    searcher.decref();
 
   }
 
@@ -103,8 +101,7 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     NamedList spellchecker = new NamedList();
     spellchecker.add("classname", FileBasedSpellChecker.class.getName());
     spellchecker.add(SolrSpellChecker.DICTIONARY_NAME, "external");
-    File spelling = new File("spellings.txt");
-    spellchecker.add(AbstractLuceneSpellChecker.LOCATION, spelling.getAbsolutePath());
+    spellchecker.add(AbstractLuceneSpellChecker.LOCATION, "spellings.txt");
     spellchecker.add(IndexBasedSpellChecker.FIELD, "teststop");
     spellchecker.add(FileBasedSpellChecker.SOURCE_FILE_CHAR_ENCODING, "UTF-8");
     File indexDir = new File(TEMP_DIR, "spellingIdx" + new Date().getTime());
@@ -117,10 +114,10 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     assertTrue(dictName + " is not equal to " + "external", dictName.equals("external") == true);
     checker.build(core, null);
 
-    IndexReader reader = core.getSearcher().get().getReader();
+    RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
     Collection<Token> tokens = queryConverter.convert("Solar");
 
-    SpellingOptions spellOpts = new SpellingOptions(tokens, reader);
+    SpellingOptions spellOpts = new SpellingOptions(tokens, searcher.get().getIndexReader());
     SpellingResult result = checker.getSuggestions(spellOpts);
     assertTrue("result is null and it shouldn't be", result != null);
     //should be lowercased, b/c we are using a lowercasing analyzer
@@ -136,6 +133,7 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     assertTrue("result is null and it shouldn't be", result != null);
     suggestions = result.get(tokens.iterator().next());
     assertTrue("suggestions is not null and it should be", suggestions == null);
+    searcher.decref();
   }
 
   /**
@@ -149,8 +147,7 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     spellchecker.add("classname", FileBasedSpellChecker.class.getName());
 
     spellchecker.add(SolrSpellChecker.DICTIONARY_NAME, "external");
-    File spelling = new File("spellings.txt");
-    spellchecker.add(AbstractLuceneSpellChecker.LOCATION, spelling.getAbsolutePath());
+    spellchecker.add(AbstractLuceneSpellChecker.LOCATION, "spellings.txt");
     spellchecker.add(FileBasedSpellChecker.SOURCE_FILE_CHAR_ENCODING, "UTF-8");
     spellchecker.add(IndexBasedSpellChecker.FIELD, "teststop");
     spellchecker.add(FileBasedSpellChecker.FIELD_TYPE, "teststop");
@@ -161,9 +158,9 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     assertTrue(dictName + " is not equal to " + "external", dictName.equals("external") == true);
     checker.build(core, null);
 
-    IndexReader reader = core.getSearcher().get().getReader();
+    RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
     Collection<Token> tokens = queryConverter.convert("solar");
-    SpellingOptions spellOpts = new SpellingOptions(tokens, reader);
+    SpellingOptions spellOpts = new SpellingOptions(tokens, searcher.get().getIndexReader());
     SpellingResult result = checker.getSuggestions(spellOpts);
     assertTrue("result is null and it shouldn't be", result != null);
     //should be lowercased, b/c we are using a lowercasing analyzer
@@ -179,5 +176,6 @@ public class FileBasedSpellCheckerTest extends SolrTestCaseJ4 {
     assertTrue("result is null and it shouldn't be", result != null);
     suggestions = result.get(spellOpts.tokens.iterator().next());
     assertTrue("suggestions is not null and it should be", suggestions == null);
+    searcher.decref();
   }
 }

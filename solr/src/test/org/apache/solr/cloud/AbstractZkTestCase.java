@@ -18,14 +18,15 @@ package org.apache.solr.cloud;
  */
 
 import java.io.File;
+import java.io.IOException;
+import java.util.List;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
-import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrConfig;
-import org.apache.solr.util.TestHarness;
 import org.apache.zookeeper.CreateMode;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,51 +43,26 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
   protected static Logger log = LoggerFactory
       .getLogger(AbstractZkTestCase.class);
 
-  protected ZkTestServer zkServer;
+  protected static ZkTestServer zkServer;
 
-  protected String zkDir;
+  protected static String zkDir;
 
-  public AbstractZkTestCase() {
-
-  }
 
   @BeforeClass
-  public static void beforeClass() throws Exception {
-    initCore("solrconfig.xml", "schema12.xml");
-  }
-  
-  @Override
-  public void setUp() throws Exception {
-
-    super.setUp();
-    
+  public static void azt_beforeClass() throws Exception {
+    createTempDir();
     zkDir = dataDir.getAbsolutePath() + File.separator
         + "zookeeper/server1/data";
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
+    
     System.setProperty("zkHost", zkServer.getZkAddress());
+    System.setProperty("hostPort", "0000");
+    
     buildZooKeeper(zkServer.getZkHost(), zkServer.getZkAddress(),
-        getSolrConfigFile(), getSchemaFile());
+        "solrconfig.xml", "schema.xml");
     
-    log.info("####SETUP_START " + getName());
-
-    dataDir.mkdirs();
-    
-    // set some system properties for use by tests
-    System.setProperty("solr.test.sys.prop1", "propone");
-    System.setProperty("solr.test.sys.prop2", "proptwo");
-    
-    CoreContainer.Initializer init = new CoreContainer.Initializer() {
-      {
-        this.dataDir = AbstractZkTestCase.dataDir.getAbsolutePath();
-      }
-    };
-    
-    h = new TestHarness("", init);
-    lrf = h.getRequestFactory("standard", 0, 20, "version", "2.2");
-    
-    log.info("####SETUP_END " + getName());
-    
+    initCore("solrconfig.xml", "schema.xml");
   }
 
   // static to share with distrib test
@@ -119,23 +95,29 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
 
   private static void putConfig(SolrZkClient zkConnection, String name)
       throws Exception {
-    zkConnection.setData("/configs/conf1/" + name, new File("solr"
+    zkConnection.setData("/configs/conf1/" + name, getFile("solr"
         + File.separator + "conf" + File.separator + name));
   }
 
+  @Override
   public void tearDown() throws Exception {
     if (DEBUG) {
       printLayout(zkServer.getZkHost());
     }
+
+    SolrConfig.severeErrors.clear();
+    super.tearDown();
+  }
+  
+  @AfterClass
+  public static void azt_afterClass() throws IOException {
     zkServer.shutdown();
     System.clearProperty("zkHost");
     System.clearProperty("solr.test.sys.prop1");
     System.clearProperty("solr.test.sys.prop2");
-    SolrConfig.severeErrors.clear();
-    super.tearDown();
   }
 
-  private void printLayout(String zkHost) throws Exception {
+  protected void printLayout(String zkHost) throws Exception {
     SolrZkClient zkClient = new SolrZkClient(zkHost, AbstractZkTestCase.TIMEOUT);
     zkClient.printLayoutToStdOut();
     zkClient.close();
@@ -144,6 +126,22 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
   static void makeSolrZkNode(String zkHost) throws Exception {
     SolrZkClient zkClient = new SolrZkClient(zkHost, TIMEOUT);
     zkClient.makePath("/solr");
+    zkClient.close();
+  }
+  
+  static void tryCleanSolrZkNode(String zkHost) throws Exception {
+    tryCleanPath(zkHost, "/solr");
+  }
+  
+  static void tryCleanPath(String zkHost, String path) throws Exception {
+    SolrZkClient zkClient = new SolrZkClient(zkHost, TIMEOUT);
+    if (zkClient.exists(path)) {
+      List<String> children = zkClient.getChildren(path, null);
+      for (String string : children) {
+        tryCleanPath(zkHost, path+"/"+string);
+      }
+      zkClient.delete(path, -1);
+    }
     zkClient.close();
   }
 }

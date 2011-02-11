@@ -19,12 +19,12 @@ package org.apache.lucene.search;
 
 /** Expert: Returned by low-level search implementations.
  * @see TopDocs */
-public class ScoreDoc implements java.io.Serializable {
+public class ScoreDoc {
   /** Expert: The score of this document for the query. */
   public float score;
 
   /** Expert: A hit document's number.
-   * @see Searcher#doc(int)
+   * @see IndexSearcher#doc(int)
    */
   public int doc;
 

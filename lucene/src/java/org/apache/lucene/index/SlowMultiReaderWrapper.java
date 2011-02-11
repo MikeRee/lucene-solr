@@ -18,10 +18,11 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.ReaderUtil;
+import org.apache.lucene.util.ReaderUtil; // javadoc
 
 import org.apache.lucene.index.DirectoryReader; // javadoc
 import org.apache.lucene.index.MultiReader; // javadoc
@@ -49,23 +50,13 @@ import org.apache.lucene.index.MultiReader; // javadoc
  */
 
 public final class SlowMultiReaderWrapper extends FilterIndexReader {
-  /** This method may return the reader back, if the
-   *  incoming reader is already atomic. */
-  public static IndexReader wrap(IndexReader reader) throws IOException {
-    final List<IndexReader> subs = new ArrayList<IndexReader>();
-    ReaderUtil.gatherSubReaders(subs, reader);
-    if (subs == null) {
-      // already an atomic reader
-      return reader;
-    } else if (subs.size() == 1) {
-      return subs.get(0);
-    } else {
-      return new SlowMultiReaderWrapper(reader);
-    }
-  }
 
-  private SlowMultiReaderWrapper(IndexReader other) throws IOException {
+  private final ReaderContext readerContext;
+  private final Map<String,byte[]> normsCache = new HashMap<String,byte[]>();
+  
+  public SlowMultiReaderWrapper(IndexReader other) {
     super(other);
+    readerContext = new AtomicReaderContext(this); // emulate atomic reader!
   }
 
   @Override
@@ -78,8 +69,39 @@ public final class SlowMultiReaderWrapper extends FilterIndexReader {
     return MultiFields.getDeletedDocs(in);
   }
 
+  
   @Override
-  public void doClose() throws IOException {
-    throw new UnsupportedOperationException("please call close on the original reader instead");
+  public IndexReader[] getSequentialSubReaders() {
+    return null;
+  }
+
+  @Override
+  public synchronized byte[] norms(String field) throws IOException {
+    ensureOpen();
+    byte[] bytes = normsCache.get(field);
+    if (bytes != null)
+      return bytes;
+    if (!hasNorms(field))
+      return null;
+    if (normsCache.containsKey(field)) // cached omitNorms, not missing key
+      return null;
+    
+    bytes = MultiNorms.norms(in, field);
+    normsCache.put(field, bytes);
+    return bytes;
+  }
+  
+  @Override
+  public ReaderContext getTopReaderContext() {
+    return readerContext;
+  }
+  
+  @Override
+  protected void doSetNorm(int n, String field, byte value)
+      throws CorruptIndexException, IOException {
+    synchronized(normsCache) {
+      normsCache.remove(field);
+    }
+    in.doSetNorm(n, field, value);
   }
 }

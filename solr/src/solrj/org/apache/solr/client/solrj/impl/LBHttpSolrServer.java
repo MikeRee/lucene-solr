@@ -18,7 +18,6 @@ package org.apache.solr.client.solrj.impl;
 
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
-import org.apache.commons.httpclient.DefaultMethodRetryHandler;
 import org.apache.commons.httpclient.DefaultHttpMethodRetryHandler;
 import org.apache.commons.httpclient.params.HttpMethodParams;
 import org.apache.solr.client.solrj.*;
@@ -32,7 +31,6 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.*;
 
 /**
@@ -107,6 +105,7 @@ public class LBHttpSolrServer extends SolrServer {
       this.solrServer = solrServer;
     }
 
+    @Override
     public String toString() {
       return solrServer.getBaseURL();
     }
@@ -151,7 +150,7 @@ public class LBHttpSolrServer extends SolrServer {
       return numDeadServersToTry;
     }
 
-    /** @return The number of dead servers to try if there are no live servers left.
+    /** @param numDeadServersToTry The number of dead servers to try if there are no live servers left.
      * Defaults to the number of servers in this request. */
     public void setNumDeadServersToTry(int numDeadServersToTry) {
       this.numDeadServersToTry = numDeadServersToTry;
@@ -378,6 +377,7 @@ public class LBHttpSolrServer extends SolrServer {
    * @throws SolrServerException
    * @throws IOException
    */
+  @Override
   public NamedList<Object> request(final SolrRequest request)
           throws SolrServerException, IOException {
     Exception ex = null;
@@ -537,6 +537,7 @@ public class LBHttpSolrServer extends SolrServer {
     return httpClient;
   }
 
+  @Override
   protected void finalize() throws Throwable {
     try {
       if(this.aliveCheckExecutor!=null)

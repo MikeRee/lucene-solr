@@ -44,7 +44,10 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.UnicodeUtil;
 
 /** Exposes flex API on a pre-flex index, as a codec. 
- * @lucene.experimental */
+ * @lucene.experimental
+ * @deprecated (4.0)
+ */
+@Deprecated
 public class PreFlexFields extends FieldsProducer {
   
   private static final boolean DEBUG_SURROGATES = false;
@@ -74,39 +77,51 @@ public class PreFlexFields extends FieldsProducer {
     if (indexDivisor < 0) {
       indexDivisor = -indexDivisor;
     }
+    
+    boolean success = false;
+    try {
+      TermInfosReader r = new TermInfosReader(dir, info.name, fieldInfos, readBufferSize, indexDivisor);    
+      if (indexDivisor == -1) {
+        tisNoIndex = r;
+      } else {
+        tisNoIndex = null;
+        tis = r;
+      }
+      this.readBufferSize = readBufferSize;
+      this.fieldInfos = fieldInfos;
 
-    TermInfosReader r = new TermInfosReader(dir, info.name, fieldInfos, readBufferSize, indexDivisor);    
-    if (indexDivisor == -1) {
-      tisNoIndex = r;
-    } else {
-      tisNoIndex = null;
-      tis = r;
-    }
-    this.readBufferSize = readBufferSize;
-    this.fieldInfos = fieldInfos;
-
-    // make sure that all index files have been read or are kept open
-    // so that if an index update removes them we'll still have them
-    freqStream = dir.openInput(info.name + ".frq", readBufferSize);
-    boolean anyProx = false;
-    final int numFields = fieldInfos.size();
-    for(int i=0;i<numFields;i++) {
-      final FieldInfo fieldInfo = fieldInfos.fieldInfo(i);
-      if (fieldInfo.isIndexed) {
-        fields.put(fieldInfo.name, fieldInfo);
-        preTerms.put(fieldInfo.name, new PreTerms(fieldInfo));
-        if (!fieldInfo.omitTermFreqAndPositions) {
-          anyProx = true;
+      // make sure that all index files have been read or are kept open
+      // so that if an index update removes them we'll still have them
+      freqStream = dir.openInput(info.name + ".frq", readBufferSize);
+      boolean anyProx = false;
+      final int numFields = fieldInfos.size();
+      for(int i=0;i<numFields;i++) {
+        final FieldInfo fieldInfo = fieldInfos.fieldInfo(i);
+        if (fieldInfo.isIndexed) {
+          fields.put(fieldInfo.name, fieldInfo);
+          preTerms.put(fieldInfo.name, new PreTerms(fieldInfo));
+          if (!fieldInfo.omitTermFreqAndPositions) {
+            anyProx = true;
+          }
         }
       }
-    }
 
-    if (anyProx) {
-      proxStream = dir.openInput(info.name + ".prx", readBufferSize);
-    } else {
-      proxStream = null;
+      if (anyProx) {
+        proxStream = dir.openInput(info.name + ".prx", readBufferSize);
+      } else {
+        proxStream = null;
+      }
+      success = true;
+    } finally {
+      // With lock-less commits, it's entirely possible (and
+      // fine) to hit a FileNotFound exception above. In
+      // this case, we want to explicitly close any subset
+      // of things that were opened so that we don't have to
+      // wait for a GC to do so.
+      if (!success) {
+        close();
+      }
     }
-
     this.dir = dir;
   }
 
@@ -246,6 +261,11 @@ public class PreFlexFields extends FieldsProducer {
       } else {
         return BytesRef.getUTF8SortedAsUTF16Comparator();
       }
+    }
+
+    @Override
+    public long getSumTotalTermFreq() {
+      return -1;
     }
   }
 
@@ -518,7 +538,7 @@ public class PreFlexFields extends FieldsProducer {
       // We can easily detect S in UTF8: if a byte has
       // prefix 11110 (0xf0), then that byte and the
       // following 3 bytes encode a single unicode codepoint
-      // in S.  Similary,we can detect E: if a byte has
+      // in S.  Similarly, we can detect E: if a byte has
       // prefix 1110111 (0xee), then that byte and the
       // following 2 bytes encode a single unicode codepoint
       // in E.
@@ -727,11 +747,6 @@ public class PreFlexFields extends FieldsProducer {
     }
 
     @Override
-    public void cacheCurrentTerm() throws IOException {
-      getTermsDict().cacheCurrentTerm(termEnum);
-    }
-
-    @Override
     public SeekStatus seek(long ord) throws IOException {
       throw new UnsupportedOperationException();
     }
@@ -928,6 +943,11 @@ public class PreFlexFields extends FieldsProducer {
     }
 
     @Override
+    public long totalTermFreq() {
+      return -1;
+    }
+
+    @Override
     public DocsEnum docs(Bits skipDocs, DocsEnum reuse) throws IOException {
       PreDocsEnum docsEnum;
       if (reuse == null || !(reuse instanceof PreDocsEnum)) {
@@ -960,7 +980,7 @@ public class PreFlexFields extends FieldsProducer {
 
   private final class PreDocsEnum extends DocsEnum {
     final private SegmentTermDocs docs;
-
+    private int docID = -1;
     PreDocsEnum() throws IOException {
       docs = new SegmentTermDocs(freqStream, getTermsDict(), fieldInfos);
     }
@@ -978,18 +998,18 @@ public class PreFlexFields extends FieldsProducer {
     @Override
     public int nextDoc() throws IOException {
       if (docs.next()) {
-        return docs.doc();
+        return docID = docs.doc();
       } else {
-        return NO_MORE_DOCS;
+        return docID = NO_MORE_DOCS;
       }
     }
 
     @Override
     public int advance(int target) throws IOException {
       if (docs.skipTo(target)) {
-        return docs.doc();
+        return docID = docs.doc();
       } else {
-        return NO_MORE_DOCS;
+        return docID = NO_MORE_DOCS;
       }
     }
 
@@ -1000,7 +1020,7 @@ public class PreFlexFields extends FieldsProducer {
 
     @Override
     public int docID() {
-      return docs.doc();
+      return docID;
     }
 
     @Override
@@ -1016,7 +1036,7 @@ public class PreFlexFields extends FieldsProducer {
 
   private final class PreDocsAndPositionsEnum extends DocsAndPositionsEnum {
     final private SegmentTermPositions pos;
-
+    private int docID = -1;
     PreDocsAndPositionsEnum() throws IOException {
       pos = new SegmentTermPositions(freqStream, proxStream, getTermsDict(), fieldInfos);
     }
@@ -1034,18 +1054,18 @@ public class PreFlexFields extends FieldsProducer {
     @Override
     public int nextDoc() throws IOException {
       if (pos.next()) {
-        return pos.doc();
+        return docID = pos.doc();
       } else {
-        return NO_MORE_DOCS;
+        return docID = NO_MORE_DOCS;
       }
     }
 
     @Override
     public int advance(int target) throws IOException {
       if (pos.skipTo(target)) {
-        return pos.doc();
+        return docID = pos.doc();
       } else {
-        return NO_MORE_DOCS;
+        return docID = NO_MORE_DOCS;
       }
     }
 
@@ -1056,16 +1076,18 @@ public class PreFlexFields extends FieldsProducer {
 
     @Override
     public int docID() {
-      return pos.doc();
+      return docID;
     }
 
     @Override
     public int nextPosition() throws IOException {
+      assert docID != NO_MORE_DOCS;
       return pos.nextPosition();
     }
 
     @Override
     public boolean hasPayload() {
+      assert docID != NO_MORE_DOCS;
       return pos.isPayloadAvailable();
     }
 

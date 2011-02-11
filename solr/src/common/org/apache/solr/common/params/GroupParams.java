@@ -18,7 +18,7 @@
 package org.apache.solr.common.params;
 
 /**
- * Facet parameters
+ * Group parameters
  */
 public interface GroupParams {
   public static final String GROUP = "group";
@@ -30,5 +30,13 @@ public interface GroupParams {
 
   /** the limit for the number of documents in each group */
   public static final String GROUP_LIMIT = GROUP + ".limit";
+  /** the offset for the doclist of each group */
+  public static final String GROUP_OFFSET = GROUP + ".offset";
+
+  /** treat the first group result as the main result.  true/false */
+  public static final String GROUP_MAIN = GROUP + ".main";
+
+  /** treat the first group result as the main result.  true/false */
+  public static final String GROUP_FORMAT = GROUP + ".format";
 }
 

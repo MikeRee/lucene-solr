@@ -26,7 +26,7 @@ import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVE
 
 /**
  * <p>
- * A DataSource which reads from local files
+ * A {@link DataSource} which reads from local files
  * </p>
  * <p>
  * The file is read with the default platform encoding. It can be overriden by
@@ -59,6 +59,7 @@ public class FileDataSource extends DataSource<Reader> {
 
   private static final Logger LOG = LoggerFactory.getLogger(FileDataSource.class);
 
+  @Override
   public void init(Context context, Properties initProps) {
     basePath = initProps.getProperty(BASE_PATH);
     if (initProps.get(URLDataSource.ENCODING) != null)
@@ -79,6 +80,7 @@ public class FileDataSource extends DataSource<Reader> {
    * returned Reader</b>
    * </p>
    */
+  @Override
   public Reader getData(String query) {
     File f = getFile(basePath,query);
     try {
@@ -130,6 +132,7 @@ public class FileDataSource extends DataSource<Reader> {
     }
   }
 
+  @Override
   public void close() {
 
   }

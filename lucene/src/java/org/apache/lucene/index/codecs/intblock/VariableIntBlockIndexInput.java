@@ -24,6 +24,7 @@ package org.apache.lucene.index.codecs.intblock;
 import java.io.IOException;
 
 import org.apache.lucene.index.codecs.sep.IntIndexInput;
+import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.IntsRef;
 
@@ -168,7 +169,7 @@ public abstract class VariableIntBlockIndexInput extends IntIndexInput {
     private int upto;
 
     @Override
-    public void read(final IndexInput indexIn, final boolean absolute) throws IOException {
+    public void read(final DataInput indexIn, final boolean absolute) throws IOException {
       if (absolute) {
         fp = indexIn.readVLong();
         upto = indexIn.readByte()&0xFF;
@@ -186,6 +187,24 @@ public abstract class VariableIntBlockIndexInput extends IntIndexInput {
       // TODO: we can't do this assert because non-causal
       // int encoders can have upto over the buffer size
       //assert upto < maxBlockSize: "upto=" + upto + " max=" + maxBlockSize;
+    }
+
+    @Override
+    public void read(final IntIndexInput.Reader indexIn, final boolean absolute) throws IOException {
+      if (absolute) {
+        fp = indexIn.readVLong();
+        upto = indexIn.next()&0xFF;
+      } else {
+        final long delta = indexIn.readVLong();
+        if (delta == 0) {
+          // same block
+          upto = indexIn.next()&0xFF;
+        } else {
+          // new block
+          fp += delta;
+          upto = indexIn.next()&0xFF;
+        }
+      }
     }
 
     @Override

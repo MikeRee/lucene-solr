@@ -51,7 +51,7 @@ public class TestRAMDirectory extends LuceneTestCase {
     super.setUp();
     indexDir = new File(TEMP_DIR, "RAMDirIndex");
     
-    Directory dir = FSDirectory.open(indexDir);
+    Directory dir = newFSDirectory(indexDir);
     IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer()).setOpenMode(OpenMode.CREATE));
     // add some documents
@@ -68,8 +68,8 @@ public class TestRAMDirectory extends LuceneTestCase {
   
   public void testRAMDirectory () throws IOException {
     
-    Directory dir = FSDirectory.open(indexDir);
-    MockDirectoryWrapper ramDir = new MockDirectoryWrapper(new RAMDirectory(dir));
+    Directory dir = newFSDirectory(indexDir);
+    MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random, new RAMDirectory(dir));
     
     // close the underlaying directory
     dir.close();
@@ -82,7 +82,7 @@ public class TestRAMDirectory extends LuceneTestCase {
     assertEquals(docsToAdd, reader.numDocs());
     
     // open search zo check if all doc's are there
-    IndexSearcher searcher = new IndexSearcher(reader);
+    IndexSearcher searcher = newSearcher(reader);
     
     // search for all documents
     for (int i = 0; i < docsToAdd; i++) {
@@ -100,8 +100,8 @@ public class TestRAMDirectory extends LuceneTestCase {
   
   public void testRAMDirectorySize() throws IOException, InterruptedException {
       
-    Directory dir = FSDirectory.open(indexDir);
-    final MockDirectoryWrapper ramDir = new MockDirectoryWrapper(new RAMDirectory(dir));
+    Directory dir = newFSDirectory(indexDir);
+    final MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random, new RAMDirectory(dir));
     dir.close();
     
     final IndexWriter writer = new IndexWriter(ramDir, new IndexWriterConfig(
@@ -139,18 +139,6 @@ public class TestRAMDirectory extends LuceneTestCase {
     writer.close();
   }
 
-
-  public void testSerializable() throws IOException {
-    Directory dir = new RAMDirectory();
-    ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
-    assertEquals("initially empty", 0, bos.size());
-    ObjectOutput out = new ObjectOutputStream(bos);
-    int headerSize = bos.size();
-    out.writeObject(dir);
-    out.close();
-    assertTrue("contains more then just header", headerSize < bos.size());
-  } 
-
   @Override
   public void tearDown() throws Exception {
     // cleanup 
@@ -179,5 +167,23 @@ public class TestRAMDirectory extends LuceneTestCase {
       files[i].delete();
     }
     dir.delete();
+  }
+
+  // LUCENE-2852
+  public void testSeekToEOFThenBack() throws Exception {
+    RAMDirectory dir = new RAMDirectory();
+
+    IndexOutput o = dir.createOutput("out");
+    byte[] bytes = new byte[3*RAMInputStream.BUFFER_SIZE];
+    o.writeBytes(bytes, 0, bytes.length);
+    o.close();
+
+    IndexInput i = dir.openInput("out");
+    i.seek(2*RAMInputStream.BUFFER_SIZE-1);
+    i.seek(3*RAMInputStream.BUFFER_SIZE);
+    i.seek(RAMInputStream.BUFFER_SIZE);
+    i.readBytes(bytes, 0, 2*RAMInputStream.BUFFER_SIZE);
+    i.close();
+    dir.close();
   }
 }

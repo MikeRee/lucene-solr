@@ -39,10 +39,11 @@ import java.util.List;
  * @since solr 1.4
  */
 public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCase {
-  private static final String CONF_DIR = "." + File.separator + "solr" + File.separator + "conf" + File.separator;
+  private static final String CONF_DIR = "." + File.separator + "solr-dih" + File.separator + "conf" + File.separator;
   SolrInstance instance = null;
   JettySolrRunner jetty;
 
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();
@@ -51,6 +52,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
     jetty = createJetty(instance);
   }
   
+  @Override
   @After
   public void tearDown() throws Exception {
     jetty.stop();
@@ -129,12 +131,12 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
       confDir.mkdirs();
 
       File f = new File(confDir, "solrconfig.xml");
-      FileUtils.copyFile(new File(getSolrConfigFile()), f);
+      FileUtils.copyFile(getFile(getSolrConfigFile()), f);
       f = new File(confDir, "schema.xml");
 
-      FileUtils.copyFile(new File(getSchemaFile()), f);
+      FileUtils.copyFile(getFile(getSchemaFile()), f);
       f = new File(confDir, "data-config.xml");
-      FileUtils.copyFile(new File(CONF_DIR + "dataconfig-contentstream.xml"), f);
+      FileUtils.copyFile(getFile(CONF_DIR + "dataconfig-contentstream.xml"), f);
     }
 
     public void tearDown() throws Exception {

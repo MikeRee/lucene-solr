@@ -80,33 +80,42 @@ public class TestSearchForDuplicates extends LuceneTestCase {
       Directory directory = newDirectory();
       Analyzer analyzer = new MockAnalyzer();
       IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
-      LogMergePolicy lmp = (LogMergePolicy) conf.getMergePolicy();
-      lmp.setUseCompoundFile(useCompoundFiles);
-      lmp.setUseCompoundDocStore(useCompoundFiles);
+      final MergePolicy mp = conf.getMergePolicy();
+      if (mp instanceof LogMergePolicy) {
+        ((LogMergePolicy) mp).setUseCompoundFile(useCompoundFiles);
+      }
       IndexWriter writer = new IndexWriter(directory, conf);
+      if (VERBOSE) {
+        System.out.println("TEST: now build index");
+        writer.setInfoStream(System.out);
+      }
 
       final int MAX_DOCS = 225;
 
       for (int j = 0; j < MAX_DOCS; j++) {
         Document d = new Document();
         d.add(newField(PRIORITY_FIELD, HIGH_PRIORITY, Field.Store.YES, Field.Index.ANALYZED));
-
-        // NOTE: this ID_FIELD produces no tokens since
-        // MockAnalyzer discards numbers
         d.add(newField(ID_FIELD, Integer.toString(j), Field.Store.YES, Field.Index.ANALYZED));
         writer.addDocument(d);
       }
       writer.close();
 
       // try a search without OR
-      Searcher searcher = new IndexSearcher(directory, true);
+      IndexSearcher searcher = new IndexSearcher(directory, true);
 
       QueryParser parser = new QueryParser(TEST_VERSION_CURRENT, PRIORITY_FIELD, analyzer);
 
       Query query = parser.parse(HIGH_PRIORITY);
       out.println("Query: " + query.toString(PRIORITY_FIELD));
+      if (VERBOSE) {
+        System.out.println("TEST: search query=" + query);
+      }
 
-      ScoreDoc[] hits = searcher.search(query, null, MAX_DOCS).scoreDocs;
+      final Sort sort = new Sort(new SortField[] {
+          SortField.FIELD_SCORE,
+          new SortField(ID_FIELD, SortField.INT)});
+
+      ScoreDoc[] hits = searcher.search(query, null, MAX_DOCS, sort).scoreDocs;
       printHits(out, hits, searcher);
       checkHits(hits, MAX_DOCS, searcher);
 
@@ -121,7 +130,7 @@ public class TestSearchForDuplicates extends LuceneTestCase {
       query = parser.parse(HIGH_PRIORITY + " OR " + MED_PRIORITY);
       out.println("Query: " + query.toString(PRIORITY_FIELD));
 
-      hits = searcher.search(query, null, MAX_DOCS).scoreDocs;
+      hits = searcher.search(query, null, MAX_DOCS, sort).scoreDocs;
       printHits(out, hits, searcher);
       checkHits(hits, MAX_DOCS, searcher);
 
@@ -130,7 +139,7 @@ public class TestSearchForDuplicates extends LuceneTestCase {
   }
 
 
-  private void printHits(PrintWriter out, ScoreDoc[] hits, Searcher searcher ) throws IOException {
+  private void printHits(PrintWriter out, ScoreDoc[] hits, IndexSearcher searcher) throws IOException {
     out.println(hits.length + " total results\n");
     for (int i = 0 ; i < hits.length; i++) {
       if ( i < 10 || (i > 94 && i < 105) ) {
@@ -140,11 +149,11 @@ public class TestSearchForDuplicates extends LuceneTestCase {
     }
   }
 
-  private void checkHits(ScoreDoc[] hits, int expectedCount, Searcher searcher) throws IOException {
+  private void checkHits(ScoreDoc[] hits, int expectedCount, IndexSearcher searcher) throws IOException {
     assertEquals("total results", expectedCount, hits.length);
     for (int i = 0 ; i < hits.length; i++) {
-      if ( i < 10 || (i > 94 && i < 105) ) {
-      Document d = searcher.doc(hits[i].doc);
+      if (i < 10 || (i > 94 && i < 105) ) {
+        Document d = searcher.doc(hits[i].doc);
         assertEquals("check " + i, String.valueOf(i), d.get(ID_FIELD));
       }
     }

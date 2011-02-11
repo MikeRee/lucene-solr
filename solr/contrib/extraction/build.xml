@@ -40,7 +40,7 @@
     <pathelement path="${dest}/classes" />
     <pathelement path="${dest}/test-classes" />
     <pathelement location="${solr-path}/build/tests"/> <!-- include solr test code -->
-    <pathelement location="${solr-path}/../lucene/build/classes/test" />  <!-- include some lucene test code -->
+    <pathelement location="${solr-path}/../lucene/build/classes/test-framework" />  <!-- include some lucene test code -->
     <pathelement path="${java.class.path}"/>
   </path>
 
@@ -79,6 +79,10 @@
   	                classpathref="test.classpath">
   	  <src path="src/test/java" />
   	</solr-javac>
+    <!-- Copy any data files present to the classpath -->
+    <copy todir="${dest}/test-classes">
+      <fileset dir="src/test/resources" excludes="**/*.java"/>
+    </copy>
   </target>
 
   <property name="tempDir" value="${junit.output.dir}/temp" />
@@ -105,7 +109,7 @@
            maxmemory="512M"
            errorProperty="tests.failed"
            failureProperty="tests.failed"
-           dir="src/test/resources/"
+           dir="${tempDir}"
            tempdir="${tempDir}"
            forkmode="perBatch"
            >
@@ -117,6 +121,9 @@
       <sysproperty key="tests.multiplier" value="${tests.multiplier}"/>
       <sysproperty key="tests.iter" value="${tests.iter}"/>
       <sysproperty key="tests.seed" value="${tests.seed}"/>
+      <sysproperty key="tests.verbose" value="${tests.verbose}"/>
+      <!-- set whether or not nightly tests should run -->
+      <sysproperty key="tests.nightly" value="${tests.nightly}"/>
       <sysproperty key="jetty.testMode" value="1"/>
       <sysproperty key="tempDir" file="${tempDir}"/>
       <sysproperty key="testmethod" value="${testmethod}"/>

@@ -2,11 +2,8 @@ package org.apache.lucene.util;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
-
 import org.junit.Before;
 import org.junit.Test;
 
@@ -34,6 +31,7 @@ public class TestRecyclingByteBlockAllocator extends LuceneTestCase {
 
   /**
    */
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();

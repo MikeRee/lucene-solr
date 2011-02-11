@@ -65,7 +65,7 @@ public class SolrDispatchFilter implements Filter
 
   public SolrDispatchFilter() {
     try {
-      adminRequestParser = new SolrRequestParsers(new Config(null,"solr",new ByteArrayInputStream("<root/>".getBytes()),"") );
+      adminRequestParser = new SolrRequestParsers(new Config(null,"solr",new ByteArrayInputStream("<root/>".getBytes("UTF-8")),"") );
     } catch (Exception e) {
       //unlikely
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,e);
@@ -81,7 +81,6 @@ public class SolrDispatchFilter implements Filter
     try {
       // web.xml configuration
       this.pathPrefix = config.getInitParameter( "path-prefix" );
-      init.setSolrConfigFilename(config.getInitParameter("solrconfig-filename"));
 
       this.cores = init.initialize();
       abortOnConfigurationError = init.isAbortOnConfigurationError();
@@ -237,6 +236,7 @@ public class SolrDispatchFilter implements Filter
                  * QueryResponseWriter is selected and we get the correct
                  * Content-Type)
                  */
+                SolrRequestInfo.setRequestInfo(new SolrRequestInfo(solrReq, solrRsp));
                 this.execute( req, handler, solrReq, solrRsp );
                 HttpCacheHeaderUtil.checkHttpCachingVeto(solrRsp, resp, reqMethod);
               // add info to http headers
@@ -250,7 +250,7 @@ public class SolrDispatchFilter implements Filter
                   log.log(Level.WARNING, "exception adding response header log information", cce);
                 }*/
                QueryResponseWriter responseWriter = core.getQueryResponseWriter(solrReq);
-              writeResponse(solrRsp, response, responseWriter, solrReq, reqMethod);
+               writeResponse(solrRsp, response, responseWriter, solrReq, reqMethod);
             }
             return; // we are done with a valid handler
           }
@@ -278,6 +278,7 @@ public class SolrDispatchFilter implements Filter
         if (core != null) {
           core.close();
         }
+        SolrRequestInfo.clearRequestInfo();        
       }
     }
 
@@ -314,7 +315,9 @@ public class SolrDispatchFilter implements Filter
       sendError((HttpServletResponse) response, solrRsp.getException());
     } else {
       // Now write it out
-      response.setContentType(responseWriter.getContentType(solrReq, solrRsp));
+      final String ct = responseWriter.getContentType(solrReq, solrRsp);
+      // don't call setContentType on null
+      if (null != ct) response.setContentType(ct); 
       if (Method.HEAD != reqMethod) {
         if (responseWriter instanceof BinaryQueryResponseWriter) {
           BinaryQueryResponseWriter binWriter = (BinaryQueryResponseWriter) responseWriter;

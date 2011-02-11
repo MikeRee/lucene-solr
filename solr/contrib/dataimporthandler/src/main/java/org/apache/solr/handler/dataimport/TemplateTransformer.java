@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * <p>
- * A Transformer which can put values into a column by resolving an expression
+ * A {@link Transformer} which can put values into a column by resolving an expression
  * containing other columns
  * </p>
  * <p/>
@@ -51,6 +51,7 @@ public class TemplateTransformer extends Transformer {
   private static final Logger LOG = LoggerFactory.getLogger(TemplateTransformer.class);
   private Map<String ,List<String>> templateVsVars = new HashMap<String, List<String>>();
 
+  @Override
   @SuppressWarnings("unchecked")
   public Object transformRow(Map<String, Object> row, Context context) {
 

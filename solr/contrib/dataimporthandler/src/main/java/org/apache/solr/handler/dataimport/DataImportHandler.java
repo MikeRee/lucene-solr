@@ -26,6 +26,7 @@ import org.apache.solr.common.params.UpdateParams;
 import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.ContentStream;
+import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrResourceLoader;
@@ -101,9 +102,7 @@ public class DataImportHandler extends RequestHandlerBase implements
           myName = myName.replaceAll("/","_") ;
         }
       }
-      String debug = (String) initArgs.get(ENABLE_DEBUG);
-      if (debug != null && "no".equals(debug))
-        debugEnabled = false;
+      debugEnabled = StrUtils.parseBool((String)initArgs.get(ENABLE_DEBUG), true);
       NamedList defaults = (NamedList) initArgs.get("defaults");
       if (defaults != null) {
         String configLoc = (String) defaults.get("config");
@@ -195,7 +194,7 @@ public class DataImportHandler extends RequestHandlerBase implements
                 req.getCore().getUpdateProcessingChain(params.get(UpdateParams.UPDATE_PROCESSOR));
         UpdateRequestProcessor processor = processorChain.createProcessor(req, rsp);
         SolrResourceLoader loader = req.getCore().getResourceLoader();
-        SolrWriter sw = getSolrWriter(processor, loader, requestParams);
+        SolrWriter sw = getSolrWriter(processor, loader, requestParams, req);
 
         if (requestParams.debug) {
           if (debugEnabled) {
@@ -277,9 +276,9 @@ public class DataImportHandler extends RequestHandlerBase implements
   }
 
   private SolrWriter getSolrWriter(final UpdateRequestProcessor processor,
-                                   final SolrResourceLoader loader, final DataImporter.RequestParams requestParams) {
+                                   final SolrResourceLoader loader, final DataImporter.RequestParams requestParams, SolrQueryRequest req) {
 
-    return new SolrWriter(processor, loader.getConfigDir(), myName) {
+    return new SolrWriter(processor, loader.getConfigDir(), myName, req) {
 
       @Override
       public boolean upload(SolrInputDocument document) {

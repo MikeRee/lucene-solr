@@ -42,7 +42,7 @@ public class TestTermVectors extends LuceneTestCase {
   public void setUp() throws Exception {                  
     super.setUp();
     directory = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, directory, new MockAnalyzer(MockTokenizer.SIMPLE, true));
+    RandomIndexWriter writer = new RandomIndexWriter(random, directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.SIMPLE, true)).setMergePolicy(newInOrderLogMergePolicy()));
     //writer.setUseCompoundFile(true);
     //writer.infoStream = System.out;
     for (int i = 0; i < 1000; i++) {
@@ -71,7 +71,7 @@ public class TestTermVectors extends LuceneTestCase {
     }
     reader = writer.getReader();
     writer.close();
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
   }
   
   @Override
@@ -239,14 +239,14 @@ public class TestTermVectors extends LuceneTestCase {
     
     RandomIndexWriter writer = new RandomIndexWriter(random, dir, 
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.SIMPLE, true))
-        .setOpenMode(OpenMode.CREATE));
+                                                     .setOpenMode(OpenMode.CREATE).setMergePolicy(newInOrderLogMergePolicy()));
     writer.addDocument(testDoc1);
     writer.addDocument(testDoc2);
     writer.addDocument(testDoc3);
     writer.addDocument(testDoc4);
     IndexReader reader = writer.getReader();
     writer.close();
-    IndexSearcher knownSearcher = new IndexSearcher(reader);
+    IndexSearcher knownSearcher = newSearcher(reader);
     FieldsEnum fields = MultiFields.getFields(knownSearcher.reader).iterator();
     
     DocsEnum docs = null;
@@ -353,11 +353,18 @@ public class TestTermVectors extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random, directory, 
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.SIMPLE, true))
         .setOpenMode(OpenMode.CREATE));
+    writer.w.setInfoStream(VERBOSE ? System.out : null);
+    if (VERBOSE) {
+      System.out.println("TEST: now add non-vectors");
+    }
     for (int i = 0; i < 100; i++) {
       Document doc = new Document();
       doc.add(new Field("field", English.intToEnglish(i),
                         Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.NO));
       writer.addDocument(doc);
+    }
+    if (VERBOSE) {
+      System.out.println("TEST: now add vectors");
     }
     for(int i=0;i<10;i++) {
       Document doc = new Document();
@@ -366,14 +373,18 @@ public class TestTermVectors extends LuceneTestCase {
       writer.addDocument(doc);
     }
 
+    if (VERBOSE) {
+      System.out.println("TEST: now getReader");
+    }
     IndexReader reader = writer.getReader();
     writer.close();
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
 
     Query query = new TermQuery(new Term("field", "hundred"));
     ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
     assertEquals(10, hits.length);
     for (int i = 0; i < hits.length; i++) {
+
       TermFreqVector [] vector = searcher.reader.getTermFreqVectors(hits[i].doc);
       assertTrue(vector != null);
       assertTrue(vector.length == 1);
@@ -403,7 +414,7 @@ public class TestTermVectors extends LuceneTestCase {
     IndexReader reader = writer.getReader();
     writer.close();
 
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
 
     Query query = new TermQuery(new Term("field", "one"));
     ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;

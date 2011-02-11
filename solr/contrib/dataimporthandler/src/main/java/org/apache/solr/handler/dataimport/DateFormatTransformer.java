@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * <p>
- * Transformer instance which creates Date instances out of Strings.
+ * {@link Transformer} instance which creates {@link Date} instances out of {@link String}s.
  * </p>
  * <p/>
  * <p>
@@ -45,6 +45,7 @@ public class DateFormatTransformer extends Transformer {
   private static final Logger LOG = LoggerFactory
           .getLogger(DateFormatTransformer.class);
 
+  @Override
   @SuppressWarnings("unchecked")
   public Object transformRow(Map<String, Object> aRow, Context context) {
 

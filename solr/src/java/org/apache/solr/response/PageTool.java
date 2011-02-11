@@ -35,7 +35,7 @@ public class PageTool {
     if (rows != null) {
       results_per_page = new Integer(rows);
     }
-
+    //TODO: Handle group by results
     Object docs = response.getValues().get("response");
     if (docs != null) {
       if (docs instanceof DocSlice) {
@@ -73,6 +73,7 @@ public class PageTool {
     return current_page_number;
   }
 
+  @Override
   public String toString() {
     return "Found " + results_found +
            " Page " + current_page_number + " of " + page_count +

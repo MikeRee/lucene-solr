@@ -24,8 +24,6 @@ import org.apache.commons.httpclient.util.DateUtil;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static junit.framework.Assert.*;
-
 
 /**
  * A test case for the several HTTP cache headers emitted by Solr
@@ -33,22 +31,25 @@ import static junit.framework.Assert.*;
 public class NoCacheHeaderTest extends CacheHeaderTestBase {
   @BeforeClass
   public static void beforeTest() throws Exception {
-    createJetty("solr/", "solr/conf/solrconfig-nocache.xml", null);
+    createJetty(TEST_HOME, "solr/conf/solrconfig-nocache.xml", null);
   }
 
   // The tests
+  @Override
   @Test
   public void testLastModified() throws Exception {
     doLastModified("GET");
     doLastModified("HEAD");
   }
 
+  @Override
   @Test
   public void testEtag() throws Exception {
     doETag("GET");
     doETag("HEAD");
   }
 
+  @Override
   @Test
   public void testCacheControl() throws Exception {
     doCacheControl("GET");
@@ -56,6 +57,7 @@ public class NoCacheHeaderTest extends CacheHeaderTestBase {
     doCacheControl("POST");
   }
   
+  @Override
   protected void doLastModified(String method) throws Exception {
     // We do a first request to get the last modified
     // This must result in a 200 OK response
@@ -107,6 +109,7 @@ public class NoCacheHeaderTest extends CacheHeaderTestBase {
   }
 
   // test ETag
+  @Override
   protected void doETag(String method) throws Exception {
     HttpMethodBase get = getSelectMethod(method);
     getClient().executeMethod(get);
@@ -155,6 +158,7 @@ public class NoCacheHeaderTest extends CacheHeaderTestBase {
         .getStatusCode());
   }
 
+  @Override
   protected void doCacheControl(String method) throws Exception {
       HttpMethodBase m = getSelectMethod(method);
       getClient().executeMethod(m);

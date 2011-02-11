@@ -38,7 +38,6 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
 
@@ -68,12 +67,6 @@ import java.util.Map;
  * dependent settings as {@link StandardAnalyzer}.</p>
  */
 public final class DutchAnalyzer extends ReusableAnalyzerBase {
-  /**
-   * List of typical Dutch stopwords.
-   * @deprecated use {@link #getDefaultStopSet()} instead
-   */
-  @Deprecated
-  public final static String[] DUTCH_STOP_WORDS = getDefaultStopSet().toArray(new String[0]);
   
   /** File containing default Dutch stopwords. */
   public final static String DEFAULT_STOPWORD_FILE = "dutch_stop.txt";
@@ -116,7 +109,7 @@ public final class DutchAnalyzer extends ReusableAnalyzerBase {
   private final Version matchVersion;
 
   /**
-   * Builds an analyzer with the default stop words ({@link #DUTCH_STOP_WORDS}) 
+   * Builds an analyzer with the default stop words ({@link #getDefaultStopSet()}) 
    * and a few default entries for the stem exclusion table.
    * 
    */
@@ -136,84 +129,6 @@ public final class DutchAnalyzer extends ReusableAnalyzerBase {
     stoptable = CharArraySet.unmodifiableSet(CharArraySet.copy(matchVersion, stopwords));
     excltable = CharArraySet.unmodifiableSet(CharArraySet.copy(matchVersion, stemExclusionTable));
     this.matchVersion = matchVersion;
-  }
-
-  /**
-   * Builds an analyzer with the given stop words.
-   *
-   * @param matchVersion
-   * @param stopwords
-   * @deprecated use {@link #DutchAnalyzer(Version, Set)} instead
-   */
-  @Deprecated
-  public DutchAnalyzer(Version matchVersion, String... stopwords) {
-    this(matchVersion, StopFilter.makeStopSet(matchVersion, stopwords));
-  }
-
-  /**
-   * Builds an analyzer with the given stop words.
-   *
-   * @param stopwords
-   * @deprecated use {@link #DutchAnalyzer(Version, Set)} instead
-   */
-  @Deprecated
-  public DutchAnalyzer(Version matchVersion, HashSet<?> stopwords) {
-    this(matchVersion, (Set<?>)stopwords);
-  }
-
-  /**
-   * Builds an analyzer with the given stop words.
-   *
-   * @param stopwords
-   * @deprecated use {@link #DutchAnalyzer(Version, Set)} instead
-   */
-  @Deprecated
-  public DutchAnalyzer(Version matchVersion, File stopwords) {
-    // this is completely broken!
-    try {
-      stoptable = org.apache.lucene.analysis.util.WordlistLoader.getWordSet(stopwords);
-    } catch (IOException e) {
-      // TODO: throw IOException
-      throw new RuntimeException(e);
-    }
-    this.matchVersion = matchVersion;
-  }
-
-  /**
-   * Builds an exclusionlist from an array of Strings.
-   *
-   * @param exclusionlist
-   * @deprecated use {@link #DutchAnalyzer(Version, Set, Set)} instead
-   */
-  @Deprecated
-  public void setStemExclusionTable(String... exclusionlist) {
-    excltable = StopFilter.makeStopSet(matchVersion, exclusionlist);
-    setPreviousTokenStream(null); // force a new stemmer to be created
-  }
-
-  /**
-   * Builds an exclusionlist from a Hashtable.
-   * @deprecated use {@link #DutchAnalyzer(Version, Set, Set)} instead
-   */
-  @Deprecated
-  public void setStemExclusionTable(HashSet<?> exclusionlist) {
-    excltable = exclusionlist;
-    setPreviousTokenStream(null); // force a new stemmer to be created
-  }
-
-  /**
-   * Builds an exclusionlist from the words contained in the given file.
-   * @deprecated use {@link #DutchAnalyzer(Version, Set, Set)} instead
-   */
-  @Deprecated
-  public void setStemExclusionTable(File exclusionlist) {
-    try {
-      excltable = org.apache.lucene.analysis.util.WordlistLoader.getWordSet(exclusionlist);
-      setPreviousTokenStream(null); // force a new stemmer to be created
-    } catch (IOException e) {
-      // TODO: throw IOException
-      throw new RuntimeException(e);
-    }
   }
 
   /**
@@ -257,7 +172,7 @@ public final class DutchAnalyzer extends ReusableAnalyzerBase {
       return new TokenStreamComponents(source, result);
     } else {
       final Tokenizer source = new StandardTokenizer(matchVersion, aReader);
-      TokenStream result = new StandardFilter(source);
+      TokenStream result = new StandardFilter(matchVersion, source);
       result = new StopFilter(matchVersion, result, stoptable);
       if (!excltable.isEmpty())
         result = new KeywordMarkerFilter(result, excltable);

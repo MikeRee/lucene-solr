@@ -18,10 +18,13 @@
 package org.apache.solr.handler.component;
 
 import org.apache.lucene.document.Field;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.IndexReader.ReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.search.*;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.ReaderUtil;
 import org.apache.solr.cloud.CloudDescriptor;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrDocument;
@@ -104,13 +107,18 @@ public class QueryComponent extends SearchComponent
         List<Query> filters = rb.getFilters();
         if (filters==null) {
           filters = new ArrayList<Query>(fqs.length);
-          rb.setFilters( filters );
         }
         for (String fq : fqs) {
           if (fq != null && fq.trim().length()!=0) {
             QParser fqp = QParser.getParser(fq, null, req);
             filters.add(fqp.getQuery());
           }
+        }
+        // only set the filters if they are not empty otherwise
+        // fq=&someotherParam= will trigger all docs filter for every request 
+        // if filter cache is disabled
+        if (!filters.isEmpty()) {
+          rb.setFilters( filters );
         }
       }
     } catch (ParseException e) {
@@ -300,17 +308,21 @@ public class QueryComponent extends SearchComponent
     boolean doGroup = params.getBool(GroupParams.GROUP, false);
     if (doGroup) {
       try {
-        cmd.groupCommands = new ArrayList<Grouping.Command>();
-        
+        Grouping grouping = new Grouping(searcher, result, cmd);
+
         String[] fields = params.getParams(GroupParams.GROUP_FIELD);
         String[] funcs = params.getParams(GroupParams.GROUP_FUNC);
         String[] queries = params.getParams(GroupParams.GROUP_QUERY);
         String groupSortStr = params.get(GroupParams.GROUP_SORT);
+        boolean main = params.getBool(GroupParams.GROUP_MAIN, false);
+        String format = params.get(GroupParams.GROUP_FORMAT);
+        Grouping.Format defaultFormat = "simple".equals(format) ? Grouping.Format.Simple : Grouping.Format.Grouped; 
 
-        // TODO: don't use groupSort==null to test for the presense of a sort since "score desc" will normalize to null
-        Sort groupSort = groupSortStr != null ? QueryParsing.parseSort(groupSortStr, req) : null;
+        // groupSort defaults to sort
+        Sort groupSort = groupSortStr == null ? cmd.getSort() : QueryParsing.parseSort(groupSortStr, req);
 
         int limitDefault = cmd.getLen(); // this is normally from "rows"
+        int groupOffsetDefault = params.getInt(GroupParams.GROUP_OFFSET, 0);
         int docsPerGroupDefault = params.getInt(GroupParams.GROUP_LIMIT, 1);
 
         // temporary: implement all group-by-field as group-by-func
@@ -329,7 +341,7 @@ public class QueryComponent extends SearchComponent
           for (String groupByStr : funcs) {
             QParser parser = QParser.getParser(groupByStr, "func", rb.req);
             Query q = parser.getQuery();
-            Grouping.CommandFunc gc = new Grouping.CommandFunc();
+            Grouping.CommandFunc gc = grouping.new CommandFunc();
             gc.groupSort = groupSort;
 
             if (q instanceof FunctionQuery) {
@@ -340,8 +352,22 @@ public class QueryComponent extends SearchComponent
             gc.key = groupByStr;
             gc.numGroups = limitDefault;
             gc.docsPerGroup = docsPerGroupDefault;
+            gc.groupOffset = groupOffsetDefault;
+            gc.offset = cmd.getOffset();
+            gc.sort = cmd.getSort();
+            gc.format = defaultFormat;
 
-            cmd.groupCommands.add(gc);
+            if (main) {
+              gc.main = true;
+              gc.format = Grouping.Format.Simple;
+              main = false;
+            }
+
+            if (gc.format == Grouping.Format.Simple) {
+              gc.groupOffset = 0;  // doesn't make sense
+            }
+
+            grouping.add(gc);
           }
         }
 
@@ -349,33 +375,53 @@ public class QueryComponent extends SearchComponent
           for (String groupByStr : queries) {
             QParser parser = QParser.getParser(groupByStr, null, rb.req);
             Query gq = parser.getQuery();
-            Grouping.CommandQuery gc = new Grouping.CommandQuery();
+            Grouping.CommandQuery gc = grouping.new CommandQuery();
             gc.query = gq;
             gc.groupSort = groupSort;
             gc.key = groupByStr;
             gc.numGroups = limitDefault;
             gc.docsPerGroup = docsPerGroupDefault;
+            gc.groupOffset = groupOffsetDefault;
 
-            cmd.groupCommands.add(gc);
+            // these two params will only be used if this is for the main result set
+            gc.offset = cmd.getOffset();
+            gc.numGroups = limitDefault;
+
+            gc.format = defaultFormat;            
+
+            if (main) {
+              gc.main = true;
+              gc.format = Grouping.Format.Simple;
+              main = false;
+            }
+            if (gc.format == Grouping.Format.Simple) {
+              gc.docsPerGroup = gc.numGroups;  // doesn't make sense to limit to one
+              gc.groupOffset = gc.offset;
+            }
+
+            grouping.add(gc);
           }
         }
 
 
-        if (cmd.groupCommands.size() == 0)
-          cmd.groupCommands = null;
-
-        if (cmd.groupCommands != null) {
-          if (rb.doHighlights || rb.isDebug()) {
-            // we need a single list of the returned docs
-            cmd.setFlags(SolrIndexSearcher.GET_DOCLIST);
-          }
-
-          searcher.search(result,cmd);
-          rb.setResult( result );
-          rsp.add("grouped", result.groupedResults);
-          // TODO: get "hits" a different way to log
-          return;
+        if (rb.doHighlights || rb.isDebug()) {
+          // we need a single list of the returned docs
+          cmd.setFlags(SolrIndexSearcher.GET_DOCLIST);
         }
+
+        // searcher.search(result,cmd);
+        grouping.execute();
+        rb.setResult( result );
+        rsp.add("grouped", result.groupedResults);
+        // TODO: get "hits" a different way to log
+
+        if (grouping.mainResult != null) {
+          rsp.add("response",grouping.mainResult);
+          rsp.getToLog().add("hits", grouping.mainResult.matches());
+        }
+
+        return;
+
       } catch (ParseException e) {
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
       }
@@ -402,27 +448,25 @@ public class QueryComponent extends SearchComponent
     // take the documents given and re-derive the sort values.
     boolean fsv = req.getParams().getBool(ResponseBuilder.FIELD_SORT_VALUES,false);
     if(fsv){
-      Sort sort = rb.getSortSpec().getSort();
+      Sort sort = searcher.weightSort(rb.getSortSpec().getSort());
       SortField[] sortFields = sort==null ? new SortField[]{SortField.FIELD_SCORE} : sort.getSort();
       NamedList sortVals = new NamedList(); // order is important for the sort fields
       Field field = new Field("dummy", "", Field.Store.YES, Field.Index.NO); // a dummy Field
-
-      SolrIndexReader reader = searcher.getReader();
-      SolrIndexReader[] readers = reader.getLeafReaders();
-      SolrIndexReader subReader = reader;
-      if (readers.length==1) {
+      ReaderContext topReaderContext = searcher.getTopReaderContext();
+      AtomicReaderContext[] leaves = ReaderUtil.leaves(topReaderContext);
+      AtomicReaderContext currentLeaf = null;
+      if (leaves.length==1) {
         // if there is a single segment, use that subReader and avoid looking up each time
-        subReader = readers[0];
-        readers=null;
+        currentLeaf = leaves[0];
+        leaves=null;
       }
-      int[] offsets = reader.getLeafOffsets();
 
       for (SortField sortField: sortFields) {
         int type = sortField.getType();
         if (type==SortField.SCORE || type==SortField.DOC) continue;
 
         FieldComparator comparator = null;
-        FieldComparator comparators[] = (readers==null) ? null : new FieldComparator[readers.length];
+        FieldComparator comparators[] = (leaves==null) ? null : new FieldComparator[leaves.length];
 
         String fieldname = sortField.getField();
         FieldType ft = fieldname==null ? null : req.getSchema().getFieldTypeNoEx(fieldname);
@@ -431,26 +475,24 @@ public class QueryComponent extends SearchComponent
         ArrayList<Object> vals = new ArrayList<Object>(docList.size());
         DocIterator it = rb.getResults().docList.iterator();
 
-        int offset = 0;
         int idx = 0;
 
         while(it.hasNext()) {
           int doc = it.nextDoc();
-          if (readers != null) {
-            idx = SolrIndexReader.readerIndex(doc, offsets);
-            subReader = readers[idx];
-            offset = offsets[idx];
+          if (leaves != null) {
+            idx = ReaderUtil.subIndex(doc, leaves);
+            currentLeaf = leaves[idx];
             comparator = comparators[idx];
           }
 
           if (comparator == null) {
             comparator = sortField.getComparator(1,0);
-            comparator = comparator.setNextReader(subReader, offset);
+            comparator = comparator.setNextReader(currentLeaf);
             if (comparators != null)
               comparators[idx] = comparator;
           }
 
-          doc -= offset;  // adjust for what segment this is in
+          doc -= currentLeaf.docBase;  // adjust for what segment this is in
           comparator.copy(0, doc);
           Object val = comparator.value(0);
 
@@ -489,8 +531,7 @@ public class QueryComponent extends SearchComponent
     SolrQueryResponse rsp = rb.rsp;
     //pre-fetch returned documents
     if (!req.getParams().getBool(ShardParams.IS_SHARD,false) && rb.getResults().docList != null && rb.getResults().docList.size()<=50) {
-      // TODO: this may depend on the highlighter component (or other components?)
-      SolrPluginUtils.optimizePreFetchDocs(rb.getResults().docList, rb.getQuery(), req, rsp);
+      SolrPluginUtils.optimizePreFetchDocs(rb, rb.getResults().docList, rb.getQuery(), req, rsp);
     }
   }
 

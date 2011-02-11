@@ -39,7 +39,6 @@ import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
-import org.apache.lucene.document.DateField;
 import org.apache.lucene.document.DateTools;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -76,7 +75,7 @@ import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.automaton.BasicAutomata;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
 import org.apache.lucene.util.automaton.RegExp;
-import org.junit.runner.RunWith;
+import org.junit.Ignore;
 
 /**
  * This test case is a copy of the core Lucene query parser test, it was adapted
@@ -84,7 +83,6 @@ import org.junit.runner.RunWith;
  * 
  * Tests QueryParser.
  */
-@RunWith(LuceneTestCase.LocalizedTestCaseRunner.class)
 public class TestQPHelper extends LuceneTestCase {
 
   public static Analyzer qpAnalyzer = new QPTestAnalyzer();
@@ -140,7 +138,7 @@ public class TestQPHelper extends LuceneTestCase {
   public static class QPTestParser extends StandardQueryParser {
     public QPTestParser(Analyzer a) {
       ((QueryNodeProcessorPipeline)getQueryNodeProcessor())
-          .addProcessor(new QPTestParserQueryNodeProcessor());
+          .add(new QPTestParserQueryNodeProcessor());
       this.setAnalyzer(a);
 
     }
@@ -502,12 +500,12 @@ public class TestQPHelper extends LuceneTestCase {
   public void testWildcard() throws Exception {
     assertQueryEquals("term*", null, "term*");
     assertQueryEquals("term*^2", null, "term*^2.0");
-    assertQueryEquals("term~", null, "term~0.5");
+    assertQueryEquals("term~", null, "term~2.0");
     assertQueryEquals("term~0.7", null, "term~0.7");
 
-    assertQueryEquals("term~^2", null, "term~0.5^2.0");
+    assertQueryEquals("term~^3", null, "term~2.0^3.0");
 
-    assertQueryEquals("term^2~", null, "term~0.5^2.0");
+    assertQueryEquals("term^3~", null, "term~2.0^3.0");
     assertQueryEquals("term*germ", null, "term*germ");
     assertQueryEquals("term*germ^3", null, "term*germ^3.0");
 
@@ -519,7 +517,7 @@ public class TestQPHelper extends LuceneTestCase {
     assertEquals(0.7f, fq.getMinSimilarity(), 0.1f);
     assertEquals(FuzzyQuery.defaultPrefixLength, fq.getPrefixLength());
     fq = (FuzzyQuery) getQuery("term~", null);
-    assertEquals(0.5f, fq.getMinSimilarity(), 0.1f);
+    assertEquals(2.0f, fq.getMinSimilarity(), 0.1f);
     assertEquals(FuzzyQuery.defaultPrefixLength, fq.getPrefixLength());
 
     assertQueryNodeException("term~1.1"); // value > 1, throws exception
@@ -555,9 +553,9 @@ public class TestQPHelper extends LuceneTestCase {
     assertWildcardQueryEquals("TE?M", false, "TE?M");
     assertWildcardQueryEquals("Te?m*gerM", false, "Te?m*gerM");
     // Fuzzy queries:
-    assertWildcardQueryEquals("Term~", "term~0.5");
-    assertWildcardQueryEquals("Term~", true, "term~0.5");
-    assertWildcardQueryEquals("Term~", false, "Term~0.5");
+    assertWildcardQueryEquals("Term~", "term~2.0");
+    assertWildcardQueryEquals("Term~", true, "term~2.0");
+    assertWildcardQueryEquals("Term~", false, "Term~2.0");
     // Range queries:
 
     // TODO: implement this on QueryParser
@@ -693,12 +691,6 @@ public class TestQPHelper extends LuceneTestCase {
     ramDir.close();
   }
 
-  /** for testing legacy DateField support */
-  private String getLegacyDate(String s) throws Exception {
-    DateFormat df = DateFormat.getDateInstance(DateFormat.SHORT);
-    return DateField.dateToString(df.parse(s));
-  }
-
   /** for testing DateTools support */
   private String getDate(String s, DateTools.Resolution resolution)
       throws Exception {
@@ -709,11 +701,7 @@ public class TestQPHelper extends LuceneTestCase {
   /** for testing DateTools support */
   private String getDate(Date d, DateTools.Resolution resolution)
       throws Exception {
-    if (resolution == null) {
-      return DateField.dateToString(d);
-    } else {
-      return DateTools.dateToString(d, resolution);
-    }
+    return DateTools.dateToString(d, resolution);
   }
   
   private String escapeDateString(String s) {
@@ -736,21 +724,6 @@ public class TestQPHelper extends LuceneTestCase {
     return df.format(calendar.getTime());
   }
 
-  /** for testing legacy DateField support */
-  public void testLegacyDateRange() throws Exception {
-    String startDate = getLocalizedDate(2002, 1, 1);
-    String endDate = getLocalizedDate(2002, 1, 4);
-    Calendar endDateExpected = new GregorianCalendar();
-    endDateExpected.clear();
-    endDateExpected.set(2002, 1, 4, 23, 59, 59);
-    endDateExpected.set(Calendar.MILLISECOND, 999);
-    assertQueryEquals("[ " + escapeDateString(startDate) + " TO " + escapeDateString(endDate) + "]", null, "["
-        + getLegacyDate(startDate) + " TO "
-        + DateField.dateToString(endDateExpected.getTime()) + "]");
-    assertQueryEquals("{  " + escapeDateString(startDate) + "    " + escapeDateString(endDate) + "   }", null, "{"
-        + getLegacyDate(startDate) + " TO " + getLegacyDate(endDate) + "}");
-  }
-
   public void testDateRange() throws Exception {
     String startDate = getLocalizedDate(2002, 1, 1);
     String endDate = getLocalizedDate(2002, 1, 4);
@@ -763,19 +736,11 @@ public class TestQPHelper extends LuceneTestCase {
     final String hourField = "hour";
     StandardQueryParser qp = new StandardQueryParser();
 
-    // Don't set any date resolution and verify if DateField is used
-    assertDateRangeQueryEquals(qp, defaultField, startDate, endDate,
-        endDateExpected.getTime(), null);
-
     Map<CharSequence, DateTools.Resolution> dateRes =  new HashMap<CharSequence, DateTools.Resolution>();
     
     // set a field specific date resolution    
     dateRes.put(monthField, DateTools.Resolution.MONTH);
     qp.setDateResolution(dateRes);
-
-    // DateField should still be used for defaultField
-    assertDateRangeQueryEquals(qp, defaultField, startDate, endDate,
-        endDateExpected.getTime(), null);
 
     // set default date resolution to MILLISECOND
     qp.setDateResolution(DateTools.Resolution.MILLISECOND);
@@ -859,10 +824,10 @@ public class TestQPHelper extends LuceneTestCase {
 
     assertQueryEquals("a:b\\\\?c", a, "a:b\\?c");
 
-    assertQueryEquals("a:b\\-c~", a, "a:b-c~0.5");
-    assertQueryEquals("a:b\\+c~", a, "a:b+c~0.5");
-    assertQueryEquals("a:b\\:c~", a, "a:b:c~0.5");
-    assertQueryEquals("a:b\\\\c~", a, "a:b\\c~0.5");
+    assertQueryEquals("a:b\\-c~", a, "a:b-c~2.0");
+    assertQueryEquals("a:b\\+c~", a, "a:b+c~2.0");
+    assertQueryEquals("a:b\\:c~", a, "a:b:c~2.0");
+    assertQueryEquals("a:b\\\\c~", a, "a:b\\c~2.0");
 
     // TODO: implement Range queries on QueryParser
     assertQueryEquals("[ a\\- TO a\\+ ]", null, "[a- TO a+]");
@@ -945,6 +910,15 @@ public class TestQPHelper extends LuceneTestCase {
     // LUCENE-881
     assertEscapedQueryEquals("|| abc ||", a, "\\|\\| abc \\|\\|");
     assertEscapedQueryEquals("&& abc &&", a, "\\&\\& abc \\&\\&");
+  }
+
+  @Ignore("contrib queryparser shouldn't escape wildcard terms")
+  public void testEscapedWildcard() throws Exception {
+    StandardQueryParser qp = new StandardQueryParser();
+    qp.setAnalyzer(new MockAnalyzer(MockTokenizer.WHITESPACE, false));
+
+    WildcardQuery q = new WildcardQuery(new Term("field", "foo\\?ba?r"));
+    assertEquals(q, qp.parse("foo\\?ba?r", "field"));
   }
 
   public void testTabNewlineCarriageReturn() throws Exception {
@@ -1067,22 +1041,35 @@ public class TestQPHelper extends LuceneTestCase {
     assertEquals(query1, query2);
   }
 
-  public void testLocalDateFormat() throws IOException, QueryNodeException {
-    Directory ramDir = newDirectory();
-    IndexWriter iw = new IndexWriter(ramDir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, false)));
-    addDateDoc("a", 2005, 12, 2, 10, 15, 33, iw);
-    addDateDoc("b", 2005, 12, 4, 22, 15, 00, iw);
-    iw.close();
-    IndexSearcher is = new IndexSearcher(ramDir, true);
-    assertHits(1, "[12/1/2005 TO 12/3/2005]", is);
-    assertHits(2, "[12/1/2005 TO 12/4/2005]", is);
-    assertHits(1, "[12/3/2005 TO 12/4/2005]", is);
-    assertHits(1, "{12/1/2005 TO 12/3/2005}", is);
-    assertHits(1, "{12/1/2005 TO 12/4/2005}", is);
-    assertHits(0, "{12/3/2005 TO 12/4/2005}", is);
-    is.close();
-    ramDir.close();
-  }
+// Todo: Convert from DateField to DateUtil
+//  public void testLocalDateFormat() throws IOException, QueryNodeException {
+//    Directory ramDir = newDirectory();
+//    IndexWriter iw = new IndexWriter(ramDir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, false)));
+//    addDateDoc("a", 2005, 12, 2, 10, 15, 33, iw);
+//    addDateDoc("b", 2005, 12, 4, 22, 15, 00, iw);
+//    iw.close();
+//    IndexSearcher is = new IndexSearcher(ramDir, true);
+//    assertHits(1, "[12/1/2005 TO 12/3/2005]", is);
+//    assertHits(2, "[12/1/2005 TO 12/4/2005]", is);
+//    assertHits(1, "[12/3/2005 TO 12/4/2005]", is);
+//    assertHits(1, "{12/1/2005 TO 12/3/2005}", is);
+//    assertHits(1, "{12/1/2005 TO 12/4/2005}", is);
+//    assertHits(0, "{12/3/2005 TO 12/4/2005}", is);
+//    is.close();
+//    ramDir.close();
+//  }
+//
+//  private void addDateDoc(String content, int year, int month, int day,
+//                          int hour, int minute, int second, IndexWriter iw) throws IOException {
+//    Document d = new Document();
+//    d.add(newField("f", content, Field.Store.YES, Field.Index.ANALYZED));
+//    Calendar cal = Calendar.getInstance(Locale.ENGLISH);
+//    cal.set(year, month - 1, day, hour, minute, second);
+//    d.add(newField("date", DateField.dateToString(cal.getTime()),
+//        Field.Store.YES, Field.Index.NOT_ANALYZED));
+//    iw.addDocument(d);
+//  }
+
 
   public void testStarParsing() throws Exception {
     // final int[] type = new int[1];
@@ -1243,17 +1230,6 @@ public class TestQPHelper extends LuceneTestCase {
     assertEquals(expected, hits.length);
   }
 
-  private void addDateDoc(String content, int year, int month, int day,
-      int hour, int minute, int second, IndexWriter iw) throws IOException {
-    Document d = new Document();
-    d.add(newField("f", content, Field.Store.YES, Field.Index.ANALYZED));
-    Calendar cal = Calendar.getInstance(Locale.ENGLISH);
-    cal.set(year, month - 1, day, hour, minute, second);
-    d.add(newField("date", DateField.dateToString(cal.getTime()),
-        Field.Store.YES, Field.Index.NOT_ANALYZED));
-    iw.addDocument(d);
-  }
-
   @Override
   public void tearDown() throws Exception {
     BooleanQuery.setMaxClauseCount(originalMaxClauses);
@@ -1301,12 +1277,13 @@ public class TestQPHelper extends LuceneTestCase {
     Document doc = new Document();
     doc.add(newField("field", "", Field.Store.NO, Field.Index.ANALYZED));
     w.addDocument(doc);
-    IndexReader r = IndexReader.open(w);
-    IndexSearcher s = new IndexSearcher(r);
+    IndexReader r = IndexReader.open(w, true);
+    IndexSearcher s = newSearcher(r);
     
     Query q = new StandardQueryParser(new CannedAnalyzer()).parse("\"a\"", "field");
     assertTrue(q instanceof MultiPhraseQuery);
     assertEquals(1, s.search(q, 10).totalHits);
+    s.close();
     r.close();
     w.close();
     dir.close();

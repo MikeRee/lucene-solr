@@ -27,21 +27,19 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.Searcher;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.BytesRef;
-import static org.junit.Assume.*;
 
 /**
  * Tests lazy skipping on the proximity file.
  *
  */
 public class TestLazyProxSkipping extends LuceneTestCase {
-    private Searcher searcher;
+    private IndexSearcher searcher;
     private int seeksCounter = 0;
     
     private String field = "tokens";
@@ -51,7 +49,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
 
     private class SeekCountingDirectory extends MockDirectoryWrapper {
       public SeekCountingDirectory(Directory delegate) {
-        super(delegate);
+        super(random, delegate);
       }
 
       @Override
@@ -70,9 +68,12 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         int numDocs = 500;
         
         Directory directory = new SeekCountingDirectory(new RAMDirectory());
-        IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, true, false)).setMaxBufferedDocs(10));
-        ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundFile(false);
-        ((LogMergePolicy) writer.getConfig().getMergePolicy()).setUseCompoundDocStore(false);
+        IndexWriter writer = new IndexWriter(
+            directory,
+            newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(MockTokenizer.WHITESPACE, true, false)).
+                setMaxBufferedDocs(10).
+                setMergePolicy(newLogMergePolicy(false))
+        );
         for (int i = 0; i < numDocs; i++) {
             Document doc = new Document();
             String content;
@@ -94,10 +95,10 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         // make sure the index has only a single segment
         writer.optimize();
         writer.close();
-        
-        SegmentReader reader = SegmentReader.getOnlySegmentReader(directory);
 
-        this.searcher = new IndexSearcher(reader);        
+      SegmentReader reader = getOnlySegmentReader(IndexReader.open(directory, false));
+
+      this.searcher = newSearcher(reader);
     }
     
     private ScoreDoc[] search() throws IOException {
@@ -121,11 +122,13 @@ public class TestLazyProxSkipping extends LuceneTestCase {
     }
  
     public void testLazySkipping() throws IOException {
-        assumeTrue(!CodecProvider.getDefaultCodec().equals("SimpleText"));
+        assumeFalse("This test cannot run with SimpleText codec", CodecProvider.getDefault().getFieldCodec(this.field).equals("SimpleText"));
         // test whether only the minimum amount of seeks()
         // are performed
         performTest(5);
+        searcher.close();
         performTest(10);
+        searcher.close();
     }
     
     public void testSeek() throws IOException {

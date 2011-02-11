@@ -18,13 +18,11 @@
 package org.apache.solr.search.function;
 
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.util.Bits;
 import org.apache.solr.search.MutableValueInt;
 import org.apache.solr.search.MutableValue;
-import org.apache.lucene.search.FieldCache;
-import org.apache.lucene.search.cache.FloatValuesCreator;
 import org.apache.lucene.search.cache.IntValuesCreator;
-import org.apache.lucene.search.cache.CachedArray.DoubleValues;
-import org.apache.lucene.search.cache.CachedArray.FloatValues;
 import org.apache.lucene.search.cache.CachedArray.IntValues;
 
 import java.io.IOException;
@@ -43,38 +41,47 @@ public class IntFieldSource extends NumericFieldCacheSource<IntValues> {
     super(creator);
   }
 
+  @Override
   public String description() {
     return "int(" + field + ')';
   }
 
 
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    final IntValues vals = cache.getInts(reader, field, creator);
+  @Override
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    final IntValues vals = cache.getInts(readerContext.reader, field, creator);
     final int[] arr = vals.values;
+	final Bits valid = vals.valid;
     
     return new DocValues() {
       final MutableValueInt val = new MutableValueInt();
       
+      @Override
       public float floatVal(int doc) {
         return (float)arr[doc];
       }
 
+      @Override
       public int intVal(int doc) {
         return arr[doc];
       }
 
+      @Override
       public long longVal(int doc) {
         return (long)arr[doc];
       }
 
+      @Override
       public double doubleVal(int doc) {
         return (double)arr[doc];
       }
 
+      @Override
       public String strVal(int doc) {
         return Float.toString(arr[doc]);
       }
 
+      @Override
       public String toString(int doc) {
         return description() + '=' + intVal(doc);
       }
@@ -127,6 +134,7 @@ public class IntFieldSource extends NumericFieldCacheSource<IntValues> {
           @Override
           public void fillValue(int doc) {
             mval.value = intArr[doc];
+            mval.exists = valid.get(doc);
           }
         };
       }

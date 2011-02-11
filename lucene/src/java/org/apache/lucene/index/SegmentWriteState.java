@@ -17,13 +17,10 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.util.HashSet;
-import java.util.Collection;
 import java.io.PrintStream;
 
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.util.BitVector;
 
 /**
  * @lucene.experimental
@@ -33,20 +30,28 @@ public class SegmentWriteState {
   public final Directory directory;
   public final String segmentName;
   public final FieldInfos fieldInfos;
-  public final String docStoreSegmentName;
   public final int numDocs;
-  public int numDocsInStore;
-  public final Collection<String> flushedFiles;
+  public boolean hasVectors;
 
-  // Actual codec used
-  final Codec codec;
+  // Deletes to apply while we are flushing the segment.  A
+  // Term is enrolled in here if it was deleted at one
+  // point, and it's mapped to the docIDUpto, meaning any
+  // docID < docIDUpto containing this term should be
+  // deleted.
+  public final BufferedDeletes segDeletes;
+
+  // Lazily created:
+  public BitVector deletedDocs;
+
+  final SegmentCodecs segmentCodecs;
+  public final String codecId;
 
   /** Expert: The fraction of terms in the "dictionary" which should be stored
    * in RAM.  Smaller values use more memory, but make searching slightly
    * faster, while larger values use less memory and make searching slightly
    * slower.  Searching is typically not dominated by dictionary lookup, so
    * tweaking this is rarely useful.*/
-  public final int termIndexInterval;
+  public int termIndexInterval;                   // TODO: this should be private to the codec, not settable here or in IWC
 
   /** Expert: The fraction of TermDocs entries stored in skip tables,
    * used to accelerate {@link DocsEnum#advance(int)}.  Larger values result in
@@ -59,20 +64,34 @@ public class SegmentWriteState {
    * slightly smaller indexes, but slower skipping in big posting lists.
    */
   public final int maxSkipLevels = 10;
+  
+
 
   public SegmentWriteState(PrintStream infoStream, Directory directory, String segmentName, FieldInfos fieldInfos,
-                           String docStoreSegmentName, int numDocs,
-                           int numDocsInStore, int termIndexInterval,
-                           CodecProvider codecs) {
+                           int numDocs, int termIndexInterval, SegmentCodecs segmentCodecs, BufferedDeletes segDeletes) {
     this.infoStream = infoStream;
+    this.segDeletes = segDeletes;
     this.directory = directory;
     this.segmentName = segmentName;
     this.fieldInfos = fieldInfos;
-    this.docStoreSegmentName = docStoreSegmentName;
     this.numDocs = numDocs;
-    this.numDocsInStore = numDocsInStore;
     this.termIndexInterval = termIndexInterval;
-    this.codec = codecs.getWriter(this);
-    flushedFiles = new HashSet<String>();
+    this.segmentCodecs = segmentCodecs;
+    codecId = "";
+  }
+  
+  /**
+   * Create a shallow {@link SegmentWriteState} copy final a codec ID
+   */
+  SegmentWriteState(SegmentWriteState state, String codecId) {
+    infoStream = state.infoStream;
+    directory = state.directory;
+    segmentName = state.segmentName;
+    fieldInfos = state.fieldInfos;
+    numDocs = state.numDocs;
+    termIndexInterval = state.termIndexInterval;
+    segmentCodecs = state.segmentCodecs;
+    this.codecId = codecId;
+    segDeletes = state.segDeletes;
   }
 }

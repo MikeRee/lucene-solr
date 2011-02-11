@@ -17,11 +17,10 @@
 
 package org.apache.solr.search.function;
 
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Searcher;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.solr.search.SolrFilter;
 
 import java.io.IOException;
@@ -50,19 +49,22 @@ public class ValueSourceRangeFilter extends SolrFilter {
     this.includeUpper = upperVal != null && includeUpper;
   }
 
-  public DocIdSet getDocIdSet(final Map context, final IndexReader reader) throws IOException {
+  @Override
+  public DocIdSet getDocIdSet(final Map context, final AtomicReaderContext readerContext) throws IOException {
      return new DocIdSet() {
-       public DocIdSetIterator iterator() throws IOException {
-         return valueSource.getValues(context, reader).getRangeScorer(reader, lowerVal, upperVal, includeLower, includeUpper);
+       @Override
+      public DocIdSetIterator iterator() throws IOException {
+         return valueSource.getValues(context, readerContext).getRangeScorer(readerContext.reader, lowerVal, upperVal, includeLower, includeUpper);
        }
      };
   }
 
   @Override
-  public void createWeight(Map context, Searcher searcher) throws IOException {
+  public void createWeight(Map context, IndexSearcher searcher) throws IOException {
     valueSource.createWeight(context, searcher);
   }
 
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("frange(");
@@ -76,6 +78,7 @@ public class ValueSourceRangeFilter extends SolrFilter {
     return sb.toString();
   }
 
+  @Override
   public boolean equals(Object o) {
     if (this == o) return true;
     if (!(o instanceof ValueSourceRangeFilter)) return false;
@@ -90,6 +93,7 @@ public class ValueSourceRangeFilter extends SolrFilter {
     return true;
   }
 
+  @Override
   public int hashCode() {
     int h = valueSource.hashCode();
     h += lowerVal != null ? lowerVal.hashCode() : 0x572353db;

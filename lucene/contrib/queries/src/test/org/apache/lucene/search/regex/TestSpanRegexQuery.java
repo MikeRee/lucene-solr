@@ -27,9 +27,8 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.MultiSearcher;
 import org.apache.lucene.search.spans.SpanFirstQuery;
-import org.apache.lucene.search.spans.SpanNearQuery;
+import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.LockObtainFailedException;
@@ -74,7 +73,7 @@ public class TestSpanRegexQuery extends LuceneTestCase {
     writer.close();
 
     IndexSearcher searcher = new IndexSearcher(directory, true);
-    SpanRegexQuery srq = new SpanRegexQuery(new Term("field", "aut.*"));
+    SpanQuery srq = new SpanMultiTermQueryWrapper<RegexQuery>(new RegexQuery(new Term("field", "aut.*")));
     SpanFirstQuery sfq = new SpanFirstQuery(srq, 1);
     // SpanNearQuery query = new SpanNearQuery(new SpanQuery[] {srq, stq}, 6,
     // true);
@@ -83,34 +82,7 @@ public class TestSpanRegexQuery extends LuceneTestCase {
     searcher.close();
     directory.close();
   }
-
-  public void testSpanRegexBug() throws CorruptIndexException, IOException {
-    createRAMDirectories();
-
-    SpanRegexQuery srq = new SpanRegexQuery(new Term("field", "a.*"));
-    SpanRegexQuery stq = new SpanRegexQuery(new Term("field", "b.*"));
-    SpanNearQuery query = new SpanNearQuery(new SpanQuery[] { srq, stq }, 6,
-        true);
-
-    // 1. Search the same store which works
-    IndexSearcher[] arrSearcher = new IndexSearcher[2];
-    arrSearcher[0] = new IndexSearcher(indexStoreA, true);
-    arrSearcher[1] = new IndexSearcher(indexStoreB, true);
-    MultiSearcher searcher = new MultiSearcher(arrSearcher);
-    int numHits = searcher.search(query, null, 1000).totalHits;
-    arrSearcher[0].close();
-    arrSearcher[1].close();
-
-    // Will fail here
-    // We expect 2 but only one matched
-    // The rewriter function only write it once on the first IndexSearcher
-    // So it's using term: a1 b1 to search on the second IndexSearcher
-    // As a result, it won't match the document in the second IndexSearcher
-    assertEquals(2, numHits);
-    indexStoreA.close();
-    indexStoreB.close();
-  }
-
+  
   private void createRAMDirectories() throws CorruptIndexException,
       LockObtainFailedException, IOException {
     // creating a document to store

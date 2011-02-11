@@ -16,8 +16,8 @@ package org.apache.solr.search.function.distance;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.spatial.DistanceUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.search.function.MultiValueSource;
@@ -95,27 +95,32 @@ public class HaversineFunction extends ValueSource {
 
 
   @Override
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    final DocValues vals1 = p1.getValues(context, reader);
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    final DocValues vals1 = p1.getValues(context, readerContext);
 
-    final DocValues vals2 = p2.getValues(context, reader);
+    final DocValues vals2 = p2.getValues(context, readerContext);
     return new DocValues() {
+      @Override
       public float floatVal(int doc) {
         return (float) doubleVal(doc);
       }
 
+      @Override
       public int intVal(int doc) {
         return (int) doubleVal(doc);
       }
 
+      @Override
       public long longVal(int doc) {
         return (long) doubleVal(doc);
       }
 
+      @Override
       public double doubleVal(int doc) {
         return distance(doc, vals1, vals2);
       }
 
+      @Override
       public String strVal(int doc) {
         return Double.toString(doubleVal(doc));
       }
@@ -132,7 +137,7 @@ public class HaversineFunction extends ValueSource {
   }
 
   @Override
-  public void createWeight(Map context, Searcher searcher) throws IOException {
+  public void createWeight(Map context, IndexSearcher searcher) throws IOException {
     p1.createWeight(context, searcher);
     p2.createWeight(context, searcher);
 
@@ -159,6 +164,7 @@ public class HaversineFunction extends ValueSource {
     return result;
   }
 
+  @Override
   public String description() {
     StringBuilder sb = new StringBuilder();
     sb.append(name()).append('(');

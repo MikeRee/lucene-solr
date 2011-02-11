@@ -17,7 +17,6 @@
 package org.apache.solr.search;
 
 import org.apache.lucene.queryParser.ParseException;
-import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.solr.common.SolrException;
@@ -42,6 +41,7 @@ public class LuceneQParserPlugin extends QParserPlugin {
   public void init(NamedList args) {
   }
 
+  @Override
   public QParser createParser(String qstr, SolrParams localParams, SolrParams params, SolrQueryRequest req) {
     return new LuceneQParser(qstr, localParams, params, req);
   }
@@ -56,6 +56,7 @@ class LuceneQParser extends QParser {
   }
 
 
+  @Override
   public Query parse() throws ParseException {
     String qstr = getString();
     if (qstr == null) return null;
@@ -74,6 +75,7 @@ class LuceneQParser extends QParser {
   }
 
 
+  @Override
   public String[] getDefaultHighlightFields() {
     return lparser == null ? new String[]{} : new String[]{lparser.getField()};
   }
@@ -88,6 +90,7 @@ class OldLuceneQParser extends LuceneQParser {
     super(qstr, localParams, params, req);
   }
 
+  @Override
   public Query parse() throws ParseException {
     // handle legacy "query;sort" syntax
     if (getLocalParams() == null) {

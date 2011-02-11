@@ -42,9 +42,7 @@ import org.apache.lucene.store.Directory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.Set;
 
 /**
  * @version $Id$
@@ -178,6 +176,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     SolrParams required = params.required();
     String cname = required.get(CoreAdminParams.CORE);
     SolrCore core = coreContainer.getCore(cname);
+    SolrQueryRequest wrappedReq = null;
     if (core != null) {
       try {
         doPersist = coreContainer.isPersistent();
@@ -192,12 +191,13 @@ public class CoreAdminHandler extends RequestHandlerBase {
 
         UpdateRequestProcessorChain processorChain =
                 core.getUpdateProcessingChain(params.get(UpdateParams.UPDATE_PROCESSOR));
-        SolrQueryRequest wrappedReq = new LocalSolrQueryRequest(core, req.getParams());
+        wrappedReq = new LocalSolrQueryRequest(core, req.getParams());
         UpdateRequestProcessor processor =
                 processorChain.createProcessor(wrappedReq, rsp);
-        processor.processMergeIndexes(new MergeIndexesCommand(dirs));
+        processor.processMergeIndexes(new MergeIndexesCommand(dirs, req));
       } finally {
         core.close();
+        wrappedReq.close();
       }
     }
     return doPersist;
@@ -470,7 +470,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
         info.add("uptime", System.currentTimeMillis() - core.getStartTime());
         RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
         try {
-          info.add("index", LukeRequestHandler.getIndexInfo(searcher.get().getReader(), false));
+          info.add("index", LukeRequestHandler.getIndexInfo(searcher.get().getIndexReader(), false));
         } finally {
           searcher.decref();
         }

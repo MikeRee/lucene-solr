@@ -42,6 +42,7 @@ public class TestRegexpQuery extends LuceneTestCase {
   private Directory directory;
   private final String FN = "field";
   
+  @Override
   public void setUp() throws Exception {
     super.setUp();
     directory = newDirectory();
@@ -53,9 +54,10 @@ public class TestRegexpQuery extends LuceneTestCase {
     writer.addDocument(doc);
     reader = writer.getReader();
     writer.close();
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
   }
   
+  @Override
   public void tearDown() throws Exception {
     searcher.close();
     reader.close();
@@ -99,9 +101,9 @@ public class TestRegexpQuery extends LuceneTestCase {
     AutomatonProvider myProvider = new AutomatonProvider() {
       // automaton that matches quick or brown
       private Automaton quickBrownAutomaton = BasicOperations.union(Arrays
-          .asList(new Automaton[] {BasicAutomata.makeString("quick"),
-              BasicAutomata.makeString("brown"),
-              BasicAutomata.makeString("bob")}));
+          .asList(BasicAutomata.makeString("quick"),
+          BasicAutomata.makeString("brown"),
+          BasicAutomata.makeString("bob")));
       
       public Automaton getAutomaton(String name) throws IOException {
         if (name.equals("quickBrown")) return quickBrownAutomaton;

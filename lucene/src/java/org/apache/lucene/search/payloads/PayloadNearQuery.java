@@ -17,10 +17,10 @@ package org.apache.lucene.search.payloads;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Searcher;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Similarity;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.spans.NearSpansOrdered;
@@ -66,7 +66,7 @@ public class PayloadNearQuery extends SpanNearQuery {
   }
 
   @Override
-  public Weight createWeight(Searcher searcher) throws IOException {
+  public Weight createWeight(IndexSearcher searcher) throws IOException {
     return new PayloadNearSpanWeight(this, searcher);
   }
 
@@ -137,16 +137,15 @@ public class PayloadNearQuery extends SpanNearQuery {
   }
 
   public class PayloadNearSpanWeight extends SpanWeight {
-    public PayloadNearSpanWeight(SpanQuery query, Searcher searcher)
+    public PayloadNearSpanWeight(SpanQuery query, IndexSearcher searcher)
         throws IOException {
       super(query, searcher);
     }
 
     @Override
-    public Scorer scorer(IndexReader reader, boolean scoreDocsInOrder,
-        boolean topScorer) throws IOException {
-      return new PayloadNearSpanScorer(query.getSpans(reader), this,
-          similarity, reader.norms(query.getField()));
+    public Scorer scorer(AtomicReaderContext context, ScorerContext scorerContext) throws IOException {
+      return new PayloadNearSpanScorer(query.getSpans(context), this,
+          similarity, context.reader.norms(query.getField()));
     }
   }
 
@@ -154,7 +153,6 @@ public class PayloadNearQuery extends SpanNearQuery {
     Spans spans;
     protected float payloadScore;
     private int payloadsSeen;
-    Similarity similarity = getSimilarity();
 
     protected PayloadNearSpanScorer(Spans spans, Weight weight,
         Similarity similarity, byte[] norms) throws IOException {
@@ -212,7 +210,7 @@ public class PayloadNearQuery extends SpanNearQuery {
           payloadsSeen = 0;
           do {
             int matchLength = spans.end() - spans.start();
-            freq += getSimilarity().sloppyFreq(matchLength);
+            freq += similarity.sloppyFreq(matchLength);
             Spans[] spansArr = new Spans[1];
             spansArr[0] = spans;
             getPayloads(spansArr);            
@@ -221,6 +219,7 @@ public class PayloadNearQuery extends SpanNearQuery {
           return true;    	
     }
 
+    @Override
     public float score() throws IOException {
 
       return super.score()

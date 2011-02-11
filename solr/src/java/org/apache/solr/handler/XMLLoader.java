@@ -24,6 +24,7 @@ import org.apache.solr.update.DeleteUpdateCommand;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.common.util.ContentStream;
+import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
@@ -36,8 +37,8 @@ import javax.xml.stream.FactoryConfigurationError;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.transform.TransformerConfigurationException;
-import java.io.Reader;
-import java.io.StringReader;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.io.IOException;
 
 
@@ -54,24 +55,31 @@ class XMLLoader extends ContentStreamLoader {
     this.inputFactory = inputFactory;
   }
 
+  @Override
   public void load(SolrQueryRequest req, SolrQueryResponse rsp, ContentStream stream) throws Exception {
     errHeader = "XMLLoader: " + stream.getSourceInfo();
-    Reader reader = null;
+    InputStream is = null;
+    XMLStreamReader parser = null;
     try {
-      reader = stream.getReader();
+      is = stream.getStream();
+      final String charset = ContentStreamBase.getCharsetFromContentType(stream.getContentType());
       if (XmlUpdateRequestHandler.log.isTraceEnabled()) {
-        String body = IOUtils.toString(reader);
-        XmlUpdateRequestHandler.log.trace("body", body);
-        reader = new StringReader(body);
+        final byte[] body = IOUtils.toByteArray(is);
+        // TODO: The charset may be wrong, as the real charset is later
+        // determined by the XML parser, the content-type is only used as a hint!
+        XmlUpdateRequestHandler.log.trace("body", new String(body, (charset == null) ?
+          ContentStreamBase.DEFAULT_CHARSET : charset));
+        IOUtils.closeQuietly(is);
+        is = new ByteArrayInputStream(body);
       }
-
-      XMLStreamReader parser = inputFactory.createXMLStreamReader(reader);
-      this.processUpdate(processor, parser);
-    }
-    catch (XMLStreamException e) {
+      parser = (charset == null) ?
+        inputFactory.createXMLStreamReader(is) : inputFactory.createXMLStreamReader(is, charset);
+      this.processUpdate(req, processor, parser);
+    } catch (XMLStreamException e) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e.getMessage(), e);
     } finally {
-      IOUtils.closeQuietly(reader);
+      if (parser != null) parser.close();
+      IOUtils.closeQuietly(is);
     }
   }
 
@@ -81,7 +89,7 @@ class XMLLoader extends ContentStreamLoader {
   /**
    * @since solr 1.2
    */
-  void processUpdate(UpdateRequestProcessor processor, XMLStreamReader parser)
+  void processUpdate(SolrQueryRequest req, UpdateRequestProcessor processor, XMLStreamReader parser)
           throws XMLStreamException, IOException, FactoryConfigurationError,
           InstantiationException, IllegalAccessException,
           TransformerConfigurationException {
@@ -98,40 +106,20 @@ class XMLLoader extends ContentStreamLoader {
           if (currTag.equals(XmlUpdateRequestHandler.ADD)) {
             XmlUpdateRequestHandler.log.trace("SolrCore.update(add)");
 
-            addCmd = new AddUpdateCommand();
-            boolean overwrite = true;  // the default
+            addCmd = new AddUpdateCommand(req);
 
-            Boolean overwritePending = null;
-            Boolean overwriteCommitted = null;
             for (int i = 0; i < parser.getAttributeCount(); i++) {
               String attrName = parser.getAttributeLocalName(i);
               String attrVal = parser.getAttributeValue(i);
               if (XmlUpdateRequestHandler.OVERWRITE.equals(attrName)) {
-                overwrite = StrUtils.parseBoolean(attrVal);
-              } else if (XmlUpdateRequestHandler.ALLOW_DUPS.equals(attrName)) {
-                overwrite = !StrUtils.parseBoolean(attrVal);
+                addCmd.overwrite = StrUtils.parseBoolean(attrVal);
               } else if (XmlUpdateRequestHandler.COMMIT_WITHIN.equals(attrName)) {
                 addCmd.commitWithin = Integer.parseInt(attrVal);
-              } else if (XmlUpdateRequestHandler.OVERWRITE_PENDING.equals(attrName)) {
-                overwritePending = StrUtils.parseBoolean(attrVal);
-              } else if (XmlUpdateRequestHandler.OVERWRITE_COMMITTED.equals(attrName)) {
-                overwriteCommitted = StrUtils.parseBoolean(attrVal);
               } else {
                 XmlUpdateRequestHandler.log.warn("Unknown attribute id in add:" + attrName);
               }
             }
 
-            // check if these flags are set
-            if (overwritePending != null && overwriteCommitted != null) {
-              if (overwritePending != overwriteCommitted) {
-                throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                        "can't have different values for 'overwritePending' and 'overwriteCommitted'");
-              }
-              overwrite = overwritePending;
-            }
-            addCmd.overwriteCommitted = overwrite;
-            addCmd.overwritePending = overwrite;
-            addCmd.allowDups = !overwrite;
           } else if ("doc".equals(currTag)) {
             XmlUpdateRequestHandler.log.trace("adding doc...");
             addCmd.clear();
@@ -140,7 +128,7 @@ class XMLLoader extends ContentStreamLoader {
           } else if (XmlUpdateRequestHandler.COMMIT.equals(currTag) || XmlUpdateRequestHandler.OPTIMIZE.equals(currTag)) {
             XmlUpdateRequestHandler.log.trace("parsing " + currTag);
 
-            CommitUpdateCommand cmd = new CommitUpdateCommand(XmlUpdateRequestHandler.OPTIMIZE.equals(currTag));
+            CommitUpdateCommand cmd = new CommitUpdateCommand(req, XmlUpdateRequestHandler.OPTIMIZE.equals(currTag));
 
             boolean sawWaitSearcher = false, sawWaitFlush = false;
             for (int i = 0; i < parser.getAttributeCount(); i++) {
@@ -171,13 +159,13 @@ class XMLLoader extends ContentStreamLoader {
           else if (XmlUpdateRequestHandler.ROLLBACK.equals(currTag)) {
             XmlUpdateRequestHandler.log.trace("parsing " + currTag);
 
-            RollbackUpdateCommand cmd = new RollbackUpdateCommand();
+            RollbackUpdateCommand cmd = new RollbackUpdateCommand(req);
 
             processor.processRollback(cmd);
           } // end rollback
           else if (XmlUpdateRequestHandler.DELETE.equals(currTag)) {
             XmlUpdateRequestHandler.log.trace("parsing delete");
-            processDelete(processor, parser);
+            processDelete(req, processor, parser);
           } // end delete
           break;
       }
@@ -187,18 +175,17 @@ class XMLLoader extends ContentStreamLoader {
   /**
    * @since solr 1.3
    */
-  void processDelete(UpdateRequestProcessor processor, XMLStreamReader parser) throws XMLStreamException, IOException {
+  void processDelete(SolrQueryRequest req, UpdateRequestProcessor processor, XMLStreamReader parser) throws XMLStreamException, IOException {
     // Parse the command
-    DeleteUpdateCommand deleteCmd = new DeleteUpdateCommand();
-    deleteCmd.fromPending = true;
-    deleteCmd.fromCommitted = true;
+    DeleteUpdateCommand deleteCmd = new DeleteUpdateCommand(req);
+
     for (int i = 0; i < parser.getAttributeCount(); i++) {
       String attrName = parser.getAttributeLocalName(i);
       String attrVal = parser.getAttributeValue(i);
       if ("fromPending".equals(attrName)) {
-        deleteCmd.fromPending = StrUtils.parseBoolean(attrVal);
+        // deprecated
       } else if ("fromCommitted".equals(attrName)) {
-        deleteCmd.fromCommitted = StrUtils.parseBoolean(attrVal);
+        // deprecated
       } else {
         XmlUpdateRequestHandler.log.warn("unexpected attribute delete/@" + attrName);
       }

@@ -20,12 +20,8 @@ package org.apache.lucene.index.codecs;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
-
-import org.apache.lucene.index.SegmentWriteState;
-import org.apache.lucene.index.codecs.preflex.PreFlexCodec;
-import org.apache.lucene.index.codecs.pulsing.PulsingCodec;
-import org.apache.lucene.index.codecs.standard.StandardCodec;
 
 /** Holds a set of codecs, keyed by name.  You subclass
  *  this, instantiate it, and register your codecs, then
@@ -35,17 +31,19 @@ import org.apache.lucene.index.codecs.standard.StandardCodec;
  *
  *  @lucene.experimental */
 
-public abstract class CodecProvider {
+public class CodecProvider {
   private SegmentInfosWriter infosWriter = new DefaultSegmentInfosWriter();
   private SegmentInfosReader infosReader = new DefaultSegmentInfosReader();
+  private String defaultFieldCodec = "Standard";
+  private final Map<String, String> perFieldMap = new HashMap<String, String>();
 
+  
   private final HashMap<String, Codec> codecs = new HashMap<String, Codec>();
 
   private final Set<String> knownExtensions = new HashSet<String>();
 
-  private static String defaultCodec = "Standard";
 
-  public final static String[] CORE_CODECS = new String[] {"Standard", "Pulsing", "PreFlex"};
+  public final static String[] CORE_CODECS = new String[] {"Standard", "Pulsing", "PreFlex", "SimpleText"};
 
   public synchronized void register(Codec codec) {
     if (codec.name == null) {
@@ -85,8 +83,6 @@ public abstract class CodecProvider {
     return codec;
   }
 
-  public abstract Codec getWriter(SegmentWriteState state);
-  
   public SegmentInfosWriter getSegmentInfosWriter() {
     return infosWriter;
   }
@@ -95,31 +91,71 @@ public abstract class CodecProvider {
     return infosReader;
   }
 
-  static private final CodecProvider defaultCodecs = new DefaultCodecProvider();
+  static private CodecProvider defaultCodecs = new CoreCodecProvider();
 
   public static CodecProvider getDefault() {
     return defaultCodecs;
   }
 
-  /** Used for testing. @lucene.internal */
-  public synchronized static void setDefaultCodec(String s) {
-    defaultCodec = s;
+  /** For testing only
+   *  @lucene.internal */
+  public static void setDefault(CodecProvider cp) {
+    defaultCodecs = cp;
   }
-  /** Used for testing. @lucene.internal */
-  public synchronized static String getDefaultCodec() {
-    return defaultCodec;
+  
+  /**
+   * Sets the {@link Codec} for a given field. Not that setting a field's codec is
+   * write-once. If the field's codec is already set this method will throw an
+   * {@link IllegalArgumentException}.
+   * 
+   * @param field
+   *          the name of the field
+   * @param codec
+   *          the name of the codec
+   * @throws IllegalArgumentException
+   *           if the codec for the given field is already set
+   * 
+   */
+  public synchronized void setFieldCodec(String field, String codec) {
+    if (perFieldMap.containsKey(field))
+      throw new IllegalArgumentException("codec for field: " + field
+          + " already set to " + perFieldMap.get(field));
+    perFieldMap.put(field, codec);
   }
-}
 
-class DefaultCodecProvider extends CodecProvider {
-  DefaultCodecProvider() {
-    register(new StandardCodec());
-    register(new PreFlexCodec());
-    register(new PulsingCodec(1));
+  /**
+   * Returns the {@link Codec} name for the given field or the default codec if
+   * not set.
+   * 
+   * @param name
+   *          the fields name
+   * @return the {@link Codec} name for the given field or the default codec if
+   *         not set.
+   */
+  public synchronized String getFieldCodec(String name) {
+    final String codec;
+    if ((codec = perFieldMap.get(name)) == null) {
+      return defaultFieldCodec;
+    }
+    return codec;
   }
 
-  @Override
-  public Codec getWriter(SegmentWriteState state) {
-    return lookup(CodecProvider.getDefaultCodec());
+  /**
+   * Returns the default {@link Codec} for this {@link CodecProvider}
+   * 
+   * @return the default {@link Codec} for this {@link CodecProvider}
+   */
+  public synchronized String getDefaultFieldCodec() {
+    return defaultFieldCodec;
+  }
+
+  /**
+   * Sets the default {@link Codec} for this {@link CodecProvider}
+   * 
+   * @param codec
+   *          the codecs name
+   */
+  public synchronized void setDefaultFieldCodec(String codec) {
+    defaultFieldCodec = codec;
   }
 }

@@ -16,10 +16,6 @@ package org.apache.solr.spelling;
  * limitations under the License.
  */
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +29,7 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.handler.component.SpellCheckComponent;
 import org.apache.solr.request.LocalSolrQueryRequest;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.SolrQueryResponse;
 import org.junit.BeforeClass;
@@ -73,7 +70,9 @@ public class SpellCheckCollatorTest extends SolrTestCaseJ4 {
 		SolrRequestHandler handler = core.getRequestHandler("spellCheckCompRH");
 		SolrQueryResponse rsp = new SolrQueryResponse();
 		rsp.add("responseHeader", new SimpleOrderedMap());
-		handler.handleRequest(new LocalSolrQueryRequest(core, params), rsp);
+		SolrQueryRequest req = new LocalSolrQueryRequest(core, params);
+		handler.handleRequest(req, rsp);
+		req.close();
 		NamedList values = rsp.getValues();
 		NamedList spellCheck = (NamedList) values.get("spellcheck");
 		NamedList suggestions = (NamedList) spellCheck.get("suggestions");
@@ -104,7 +103,9 @@ public class SpellCheckCollatorTest extends SolrTestCaseJ4 {
 		SolrRequestHandler handler = core.getRequestHandler("spellCheckCompRH");
 		SolrQueryResponse rsp = new SolrQueryResponse();
 		rsp.add("responseHeader", new SimpleOrderedMap());
-		handler.handleRequest(new LocalSolrQueryRequest(core, params), rsp);
+		SolrQueryRequest req = new LocalSolrQueryRequest(core, params);
+		handler.handleRequest(req, rsp);
+		req.close();
 		NamedList values = rsp.getValues();
 		NamedList spellCheck = (NamedList) values.get("spellcheck");
 		NamedList suggestions = (NamedList) spellCheck.get("suggestions");
@@ -117,7 +118,9 @@ public class SpellCheckCollatorTest extends SolrTestCaseJ4 {
 		handler = core.getRequestHandler("spellCheckCompRH1");
 		rsp = new SolrQueryResponse();
 		rsp.add("responseHeader", new SimpleOrderedMap());
-		handler.handleRequest(new LocalSolrQueryRequest(core, params), rsp);
+		req = new LocalSolrQueryRequest(core, params);
+		handler.handleRequest(req, rsp);
+		req.close();
 		values = rsp.getValues();
 		spellCheck = (NamedList) values.get("spellcheck");
 		suggestions = (NamedList) spellCheck.get("suggestions");
@@ -147,7 +150,9 @@ public class SpellCheckCollatorTest extends SolrTestCaseJ4 {
 		SolrRequestHandler handler = core.getRequestHandler("spellCheckCompRH");
 		SolrQueryResponse rsp = new SolrQueryResponse();
 		rsp.add("responseHeader", new SimpleOrderedMap());
-		handler.handleRequest(new LocalSolrQueryRequest(core, params), rsp);
+		SolrQueryRequest req = new LocalSolrQueryRequest(core, params);
+		handler.handleRequest(req, rsp);
+		req.close();
 		NamedList values = rsp.getValues();
 		NamedList spellCheck = (NamedList) values.get("spellcheck");
 		NamedList suggestions = (NamedList) spellCheck.get("suggestions");
@@ -162,7 +167,9 @@ public class SpellCheckCollatorTest extends SolrTestCaseJ4 {
 		handler = core.getRequestHandler("spellCheckCompRH");
 		rsp = new SolrQueryResponse();
 		rsp.add("responseHeader", new SimpleOrderedMap());
-		handler.handleRequest(new LocalSolrQueryRequest(core, params), rsp);
+		req = new LocalSolrQueryRequest(core, params);
+		handler.handleRequest(req, rsp);
+    req.close();
 		values = rsp.getValues();
 		spellCheck = (NamedList) values.get("spellcheck");
 		suggestions = (NamedList) spellCheck.get("suggestions");
@@ -178,7 +185,9 @@ public class SpellCheckCollatorTest extends SolrTestCaseJ4 {
 		handler = core.getRequestHandler("spellCheckCompRH");
 		rsp = new SolrQueryResponse();
 		rsp.add("responseHeader", new SimpleOrderedMap());
-		handler.handleRequest(new LocalSolrQueryRequest(core, params), rsp);
+		req = new LocalSolrQueryRequest(core, params);
+		handler.handleRequest(req, rsp);
+		req.close();
 		values = rsp.getValues();
 		spellCheck = (NamedList) values.get("spellcheck");
 		suggestions = (NamedList) spellCheck.get("suggestions");
@@ -195,7 +204,9 @@ public class SpellCheckCollatorTest extends SolrTestCaseJ4 {
 		handler = core.getRequestHandler("spellCheckCompRH");
 		rsp = new SolrQueryResponse();
 		rsp.add("responseHeader", new SimpleOrderedMap());
-		handler.handleRequest(new LocalSolrQueryRequest(core, params), rsp);
+		req = new LocalSolrQueryRequest(core, params);
+		handler.handleRequest(req, rsp);
+		req.close();
 		values = rsp.getValues();
 		spellCheck = (NamedList) values.get("spellcheck");
 		suggestions = (NamedList) spellCheck.get("suggestions");

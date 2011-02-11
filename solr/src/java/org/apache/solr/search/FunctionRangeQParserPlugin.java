@@ -18,8 +18,6 @@ package org.apache.solr.search;
 
 import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ConstantScoreQuery;
-import org.apache.lucene.search.Filter;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
@@ -41,11 +39,13 @@ public class FunctionRangeQParserPlugin extends QParserPlugin {
   public void init(NamedList args) {
   }
 
+  @Override
   public QParser createParser(String qstr, SolrParams localParams, SolrParams params, SolrQueryRequest req) {
     return new QParser(qstr, localParams, params, req) {
       ValueSource vs;
       String funcStr;
 
+      @Override
       public Query parse() throws ParseException {
         funcStr = localParams.get(QueryParsing.V, null);
         Query funcQ = subQuery(funcStr, FunctionQParserPlugin.NAME).parse();

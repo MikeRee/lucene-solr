@@ -17,19 +17,19 @@ package org.apache.lucene.analysis.tokenattributes;
  * limitations under the License.
  */
 
-import java.io.Serializable;
 import java.nio.CharBuffer;
 
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.UnicodeUtil;
 
 /**
  * The term text of a Token.
  */
-public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttribute, TermToBytesRefAttribute, Cloneable, Serializable {
+public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttribute, TermToBytesRefAttribute, Cloneable {
   private static int MIN_BUFFER_SIZE = 10;
   
   private char[] termBuffer = new char[ArrayUtil.oversize(MIN_BUFFER_SIZE, RamUsageEstimator.NUM_BYTES_CHAR)];
@@ -203,7 +203,8 @@ public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttr
   public Object clone() {
     CharTermAttributeImpl t = (CharTermAttributeImpl)super.clone();
     // Do a deep clone
-    t.termBuffer = termBuffer.clone();
+    t.termBuffer = new char[this.termLength];
+    System.arraycopy(this.termBuffer, 0, t.termBuffer, 0, this.termLength);
     return t;
   }
   
@@ -240,6 +241,14 @@ public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttr
   @Override
   public String toString() {
     return new String(termBuffer, 0, termLength);
+  }
+  
+  @Override
+  public void reflectWith(AttributeReflector reflector) {
+    reflector.reflect(CharTermAttribute.class, "term", toString());
+    final BytesRef bytes = new BytesRef();
+    toBytesRef(bytes);
+    reflector.reflect(TermToBytesRefAttribute.class, "bytes", bytes);
   }
   
   @Override

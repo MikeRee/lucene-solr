@@ -131,6 +131,7 @@ public class TestAtomicUpdate extends LuceneTestCase {
         .setMaxBufferedDocs(7);
     ((LogMergePolicy) conf.getMergePolicy()).setMergeFactor(3);
     IndexWriter writer = new MockIndexWriter(directory, conf);
+    writer.setInfoStream(VERBOSE ? System.out : null);
 
     // Establish a base index of 100 docs:
     for(int i=0;i<100;i++) {
@@ -189,13 +190,13 @@ public class TestAtomicUpdate extends LuceneTestCase {
     Directory directory;
 
     // First in a RAM directory:
-    directory = new MockDirectoryWrapper(new RAMDirectory());
+    directory = new MockDirectoryWrapper(random, new RAMDirectory());
     runTest(directory);
     directory.close();
 
     // Second in an FSDirectory:
     File dirPath = _TestUtil.getTempDir("lucene.test.atomic");
-    directory = FSDirectory.open(dirPath);
+    directory = newFSDirectory(dirPath);
     runTest(directory);
     directory.close();
     _TestUtil.rmDir(dirPath);

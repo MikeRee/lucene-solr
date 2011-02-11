@@ -28,10 +28,10 @@ import java.util.regex.Pattern;
 
 /**
  * <p>
- * A Transformer instance which can extract numbers out of strings. It uses
- * <code>java.text.NumberFormat</code> class to parse strings and supports
+ * A {@link Transformer} instance which can extract numbers out of strings. It uses
+ * {@link NumberFormat} class to parse strings and supports
  * Number, Integer, Currency and Percent styles as supported by
- * <code>java.text.NumberFormat</code> with configurable locales.
+ * {@link NumberFormat} with configurable locales.
  * </p>
  * <p/>
  * <p>
@@ -49,6 +49,7 @@ public class NumberFormatTransformer extends Transformer {
 
   private static final Pattern localeRegex = Pattern.compile("^([a-z]{2})-([A-Z]{2})$");
 
+  @Override
   @SuppressWarnings("unchecked")
   public Object transformRow(Map<String, Object> row, Context context) {
     for (Map<String, String> fld : context.getAllEntityFields()) {

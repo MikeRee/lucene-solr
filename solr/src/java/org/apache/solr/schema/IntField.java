@@ -20,11 +20,11 @@ package org.apache.solr.schema;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.cache.CachedArrayCreator;
 import org.apache.lucene.search.cache.IntValuesCreator;
+import org.apache.solr.search.QParser;
 import org.apache.solr.search.function.ValueSource;
 import org.apache.solr.search.function.IntFieldSource;
 import org.apache.lucene.document.Fieldable;
 import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 
 import java.util.Map;
 import java.io.IOException;
@@ -32,22 +32,23 @@ import java.io.IOException;
  * @version $Id$
  */
 public class IntField extends FieldType {
+  @Override
   protected void init(IndexSchema schema, Map<String,String> args) {
     restrictProps(SORT_MISSING_FIRST | SORT_MISSING_LAST);
   }
 
+  @Override
   public SortField getSortField(SchemaField field,boolean reverse) {
+    field.checkSortability();
     return new SortField(field.name,SortField.INT, reverse);
   }
 
-  public ValueSource getValueSource(SchemaField field) {
+  @Override
+  public ValueSource getValueSource(SchemaField field, QParser qparser) {
     return new IntFieldSource(new IntValuesCreator( field.name, null, CachedArrayCreator.CACHE_VALUES_AND_BITS ) );
   }
 
-  public void write(XMLWriter xmlWriter, String name, Fieldable f) throws IOException {
-    xmlWriter.writeInt(name, f.stringValue());
-  }
-
+  @Override
   public void write(TextResponseWriter writer, String name, Fieldable f) throws IOException {
     String s = f.stringValue();
 

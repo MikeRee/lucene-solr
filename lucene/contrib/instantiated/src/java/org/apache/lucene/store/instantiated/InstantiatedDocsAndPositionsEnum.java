@@ -19,7 +19,6 @@ package org.apache.lucene.store.instantiated;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import java.util.Arrays;
 
 public class InstantiatedDocsAndPositionsEnum extends DocsAndPositionsEnum {
   private int upto;
@@ -83,14 +82,17 @@ public class InstantiatedDocsAndPositionsEnum extends DocsAndPositionsEnum {
     return currentDoc.getTermPositions().length;
   }
   
+  @Override
   public int nextPosition() {
     return currentDoc.getTermPositions()[++posUpto];
   }
 
+  @Override
   public boolean hasPayload() {
     return currentDoc.getPayloads()[posUpto] != null;
   }
 
+  @Override
   public BytesRef getPayload() {
     payload.bytes = currentDoc.getPayloads()[posUpto];
     payload.length = payload.bytes.length;

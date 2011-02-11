@@ -17,153 +17,228 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.search.Query;
+import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.index.BufferedDeletesStream.QueryAndLimit;
 
-/** Holds buffered deletes, by docID, term or query.  We
- *  hold two instances of this class: one for the deletes
- *  prior to the last flush, the other for deletes after
- *  the last flush.  This is so if we need to abort
- *  (discard all buffered docs) we can also discard the
- *  buffered deletes yet keep the deletes done during
- *  previously flushed segments. */
+/* Holds buffered deletes, by docID, term or query for a
+ * single segment. This is used to hold buffered pending
+ * deletes against the to-be-flushed segment.  Once the
+ * deletes are pushed (on flush in DocumentsWriter), these
+ * deletes are converted to a FrozenDeletes instance. */
+
+// NOTE: we are sync'd by BufferedDeletes, ie, all access to
+// instances of this class is via sync'd methods on
+// BufferedDeletes
+
 class BufferedDeletes {
-  int numTerms;
-  Map<Term,Num> terms;
-  Map<Query,Integer> queries = new HashMap<Query,Integer>();
-  List<Integer> docIDs = new ArrayList<Integer>();
-  long bytesUsed;
-  private final boolean doTermSort;
 
-  public BufferedDeletes(boolean doTermSort) {
-    this.doTermSort = doTermSort;
-    if (doTermSort) {
-      terms = new TreeMap<Term,Num>();
+  /* Rough logic: HashMap has an array[Entry] w/ varying
+     load factor (say 2 * POINTER).  Entry is object w/ Term
+     key, Integer val, int hash, Entry next
+     (OBJ_HEADER + 3*POINTER + INT).  Term is object w/
+     String field and String text (OBJ_HEADER + 2*POINTER).
+     We don't count Term's field since it's interned.
+     Term's text is String (OBJ_HEADER + 4*INT + POINTER +
+     OBJ_HEADER + string.length*CHAR).  Integer is
+     OBJ_HEADER + INT. */
+  final static int BYTES_PER_DEL_TERM = 8*RamUsageEstimator.NUM_BYTES_OBJECT_REF + 5*RamUsageEstimator.NUM_BYTES_OBJECT_HEADER + 6*RamUsageEstimator.NUM_BYTES_INT;
+
+  /* Rough logic: del docIDs are List<Integer>.  Say list
+     allocates ~2X size (2*POINTER).  Integer is OBJ_HEADER
+     + int */
+  final static int BYTES_PER_DEL_DOCID = 2*RamUsageEstimator.NUM_BYTES_OBJECT_REF + RamUsageEstimator.NUM_BYTES_OBJECT_HEADER + RamUsageEstimator.NUM_BYTES_INT;
+
+  /* Rough logic: HashMap has an array[Entry] w/ varying
+     load factor (say 2 * POINTER).  Entry is object w/
+     Query key, Integer val, int hash, Entry next
+     (OBJ_HEADER + 3*POINTER + INT).  Query we often
+     undercount (say 24 bytes).  Integer is OBJ_HEADER + INT. */
+  final static int BYTES_PER_DEL_QUERY = 5*RamUsageEstimator.NUM_BYTES_OBJECT_REF + 2*RamUsageEstimator.NUM_BYTES_OBJECT_HEADER + 2*RamUsageEstimator.NUM_BYTES_INT + 24;
+
+  final AtomicInteger numTermDeletes = new AtomicInteger();
+  final Map<Term,Integer> terms;
+  final Map<Query,Integer> queries = new HashMap<Query,Integer>();
+  final List<Integer> docIDs = new ArrayList<Integer>();
+
+  public static final Integer MAX_INT = Integer.valueOf(Integer.MAX_VALUE);
+
+  final AtomicLong bytesUsed = new AtomicLong();
+
+  private final static boolean VERBOSE_DELETES = false;
+
+  long gen;
+
+  public BufferedDeletes(boolean sortTerms) {
+    if (sortTerms) {
+      terms = new TreeMap<Term,Integer>();
     } else {
-      terms = new HashMap<Term,Num>();
+      terms = new HashMap<Term,Integer>();
     }
   }
 
-  // Number of documents a delete term applies to.
-  final static class Num {
-    private int num;
+  @Override
+  public String toString() {
+    if (VERBOSE_DELETES) {
+      return "gen=" + gen + " numTerms=" + numTermDeletes + ", terms=" + terms
+        + ", queries=" + queries + ", docIDs=" + docIDs + ", bytesUsed="
+        + bytesUsed;
+    } else {
+      String s = "gen=" + gen;
+      if (numTermDeletes.get() != 0) {
+        s += " " + numTermDeletes.get() + " deleted terms (unique count=" + terms.size() + ")";
+      }
+      if (queries.size() != 0) {
+        s += " " + queries.size() + " deleted queries";
+      }
+      if (docIDs.size() != 0) {
+        s += " " + docIDs.size() + " deleted docIDs";
+      }
+      if (bytesUsed.get() != 0) {
+        s += " bytesUsed=" + bytesUsed.get();
+      }
 
-    Num(int num) {
-      this.num = num;
+      return s;
+    }
+  }
+
+  void update(BufferedDeletes in) {
+    numTermDeletes.addAndGet(in.numTermDeletes.get());
+    for (Map.Entry<Term,Integer> ent : in.terms.entrySet()) {
+      final Term term = ent.getKey();
+      if (!terms.containsKey(term)) {
+        // only incr bytesUsed if this term wasn't already buffered:
+        bytesUsed.addAndGet(BYTES_PER_DEL_TERM);
+      }
+      terms.put(term, MAX_INT);
     }
 
-    int getNum() {
-      return num;
+    for (Map.Entry<Query,Integer> ent : in.queries.entrySet()) {
+      final Query query = ent.getKey();
+      if (!queries.containsKey(query)) {
+        // only incr bytesUsed if this query wasn't already buffered:
+        bytesUsed.addAndGet(BYTES_PER_DEL_QUERY);
+      }
+      queries.put(query, MAX_INT);
     }
 
-    void setNum(int num) {
+    // docIDs never move across segments and the docIDs
+    // should already be cleared
+  }
+
+  void update(FrozenBufferedDeletes in) {
+    numTermDeletes.addAndGet(in.numTermDeletes);
+    for(Term term : in.terms) {
+      if (!terms.containsKey(term)) {
+        // only incr bytesUsed if this term wasn't already buffered:
+        bytesUsed.addAndGet(BYTES_PER_DEL_TERM);
+      }
+      terms.put(term, MAX_INT);
+    }
+
+    for(int queryIdx=0;queryIdx<in.queries.length;queryIdx++) {
+      final Query query = in.queries[queryIdx];
+      if (!queries.containsKey(query)) {
+        // only incr bytesUsed if this query wasn't already buffered:
+        bytesUsed.addAndGet(BYTES_PER_DEL_QUERY);
+      }
+      queries.put(query, MAX_INT);
+    }
+  }
+
+  public void addQuery(Query query, int docIDUpto) {
+    Integer current = queries.put(query, docIDUpto);
+    // increment bytes used only if the query wasn't added so far.
+    if (current == null) {
+      bytesUsed.addAndGet(BYTES_PER_DEL_QUERY);
+    }
+  }
+
+  public void addDocID(int docID) {
+    docIDs.add(Integer.valueOf(docID));
+    bytesUsed.addAndGet(BYTES_PER_DEL_DOCID);
+  }
+
+  public void addTerm(Term term, int docIDUpto) {
+    Integer current = terms.get(term);
+    if (current != null && docIDUpto < current) {
       // Only record the new number if it's greater than the
       // current one.  This is important because if multiple
       // threads are replacing the same doc at nearly the
       // same time, it's possible that one thread that got a
       // higher docID is scheduled before the other
-      // threads.
-      if (num > this.num)
-        this.num = num;
+      // threads.  If we blindly replace than we can
+      // incorrectly get both docs indexed.
+      return;
+    }
+
+    terms.put(term, Integer.valueOf(docIDUpto));
+    numTermDeletes.incrementAndGet();
+    if (current == null) {
+      bytesUsed.addAndGet(BYTES_PER_DEL_TERM + term.bytes.length);
     }
   }
 
-  int size() {
-    // We use numTerms not terms.size() intentionally, so
-    // that deletes by the same term multiple times "count",
-    // ie if you ask to flush every 1000 deletes then even
-    // dup'd terms are counted towards that 1000
-    return numTerms + queries.size() + docIDs.size();
+  public Iterable<Term> termsIterable() {
+    return new Iterable<Term>() {
+      // @Override -- not until Java 1.6
+      public Iterator<Term> iterator() {
+        return terms.keySet().iterator();
+      }
+    };
   }
 
-  void update(BufferedDeletes in) {
-    numTerms += in.numTerms;
-    bytesUsed += in.bytesUsed;
-    terms.putAll(in.terms);
-    queries.putAll(in.queries);
-    docIDs.addAll(in.docIDs);
-    in.clear();
-  }
+  public Iterable<QueryAndLimit> queriesIterable() {
+    return new Iterable<QueryAndLimit>() {
+      
+      // @Override -- not until Java 1.6
+      public Iterator<QueryAndLimit> iterator() {
+        return new Iterator<QueryAndLimit>() {
+          private final Iterator<Map.Entry<Query,Integer>> iter = queries.entrySet().iterator();
+
+          // @Override -- not until Java 1.6
+          public boolean hasNext() {
+            return iter.hasNext();
+          }
+
+          // @Override -- not until Java 1.6
+          public QueryAndLimit next() {
+            final Map.Entry<Query,Integer> ent = iter.next();
+            return new QueryAndLimit(ent.getKey(), ent.getValue());
+          }
+
+          // @Override -- not until Java 1.6
+          public void remove() {
+            throw new UnsupportedOperationException();
+          }
+        };
+      }
+    };
+  }    
     
   void clear() {
     terms.clear();
     queries.clear();
     docIDs.clear();
-    numTerms = 0;
-    bytesUsed = 0;
+    numTermDeletes.set(0);
+    bytesUsed.set(0);
   }
-
-  void addBytesUsed(long b) {
-    bytesUsed += b;
+  
+  void clearDocIDs() {
+    bytesUsed.addAndGet(-docIDs.size()*BYTES_PER_DEL_DOCID);
+    docIDs.clear();
   }
-
+  
   boolean any() {
     return terms.size() > 0 || docIDs.size() > 0 || queries.size() > 0;
-  }
-
-  // Remaps all buffered deletes based on a completed
-  // merge
-  synchronized void remap(MergeDocIDRemapper mapper,
-                          SegmentInfos infos,
-                          int[][] docMaps,
-                          int[] delCounts,
-                          MergePolicy.OneMerge merge,
-                          int mergeDocCount) {
-
-    final Map<Term,Num> newDeleteTerms;
-
-    // Remap delete-by-term
-    if (terms.size() > 0) {
-      if (doTermSort) {
-        newDeleteTerms = new TreeMap<Term,Num>();
-      } else {
-        newDeleteTerms = new HashMap<Term,Num>();
-      }
-      for(Entry<Term,Num> entry : terms.entrySet()) {
-        Num num = entry.getValue();
-        newDeleteTerms.put(entry.getKey(),
-                           new Num(mapper.remap(num.getNum())));
-      }
-    } else 
-      newDeleteTerms = null;
-    
-
-    // Remap delete-by-docID
-    final List<Integer> newDeleteDocIDs;
-
-    if (docIDs.size() > 0) {
-      newDeleteDocIDs = new ArrayList<Integer>(docIDs.size());
-      for (Integer num : docIDs) {
-        newDeleteDocIDs.add(Integer.valueOf(mapper.remap(num.intValue())));
-      }
-    } else 
-      newDeleteDocIDs = null;
-    
-
-    // Remap delete-by-query
-    final HashMap<Query,Integer> newDeleteQueries;
-    
-    if (queries.size() > 0) {
-      newDeleteQueries = new HashMap<Query, Integer>(queries.size());
-      for(Entry<Query,Integer> entry: queries.entrySet()) {
-        Integer num = entry.getValue();
-        newDeleteQueries.put(entry.getKey(),
-                             Integer.valueOf(mapper.remap(num.intValue())));
-      }
-    } else
-      newDeleteQueries = null;
-
-    if (newDeleteTerms != null)
-      terms = newDeleteTerms;
-    if (newDeleteDocIDs != null)
-      docIDs = newDeleteDocIDs;
-    if (newDeleteQueries != null)
-      queries = newDeleteQueries;
   }
 }

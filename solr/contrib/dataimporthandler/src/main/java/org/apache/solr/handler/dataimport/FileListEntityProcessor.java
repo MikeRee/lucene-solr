@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 
 /**
  * <p>
- * An EntityProcessor instance which can stream file names found in a given base
+ * An {@link EntityProcessor} instance which can stream file names found in a given base
  * directory matching patterns and returning rows containing file information.
  * </p>
  * <p/>
@@ -38,7 +38,7 @@ import java.util.regex.Pattern;
  * <li>size (bigger or smaller than size given in bytes)</li>
  * <li>recursively iterating through sub-directories</li>
  * </ul>
- * Its output can be used along with FileDataSource to read from files in file
+ * Its output can be used along with {@link FileDataSource} to read from files in file
  * systems.
  * </p>
  * <p/>
@@ -52,6 +52,7 @@ import java.util.regex.Pattern;
  *
  * @version $Id$
  * @since solr 1.3
+ * @see Pattern
  */
 public class FileListEntityProcessor extends EntityProcessorBase {
   /**
@@ -105,6 +106,7 @@ public class FileListEntityProcessor extends EntityProcessorBase {
 
   private Pattern fileNamePattern, excludesPattern;
 
+  @Override
   public void init(Context context) {
     super.init(context);
     fileName = context.getEntityAttribute(FILE_NAME);
@@ -194,6 +196,7 @@ public class FileListEntityProcessor extends EntityProcessorBase {
     return Long.parseLong(sizeStr);
   }
 
+  @Override
   public Map<String, Object> nextRow() {
     if (rowIterator != null)
       return getNext();

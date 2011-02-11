@@ -22,6 +22,7 @@ import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.index.codecs.FieldsConsumer;
 import org.apache.lucene.index.codecs.TermsConsumer;
 import org.apache.lucene.index.codecs.PostingsConsumer;
+import org.apache.lucene.index.codecs.TermStats;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.IndexOutput;
@@ -44,9 +45,8 @@ class SimpleTextFieldsWriter extends FieldsConsumer {
   final static BytesRef PAYLOAD = new BytesRef("        payload ");
 
   public SimpleTextFieldsWriter(SegmentWriteState state) throws IOException {
-    final String fileName = SimpleTextCodec.getPostingsFileName(state.segmentName);
+    final String fileName = SimpleTextCodec.getPostingsFileName(state.segmentName, state.codecId);
     out = state.directory.createOutput(fileName);
-    state.flushedFiles.add(fileName);
   }
 
   private void write(String s) throws IOException {
@@ -85,11 +85,11 @@ class SimpleTextFieldsWriter extends FieldsConsumer {
     }
 
     @Override
-    public void finishTerm(BytesRef term, int numDocs) throws IOException {
+    public void finishTerm(BytesRef term, TermStats stats) throws IOException {
     }
 
     @Override
-    public void finish() throws IOException {
+    public void finish(long sumTotalTermFreq) throws IOException {
     }
 
     @Override

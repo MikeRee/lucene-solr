@@ -17,11 +17,11 @@ package org.apache.lucene.search.spans;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.util.ArrayUtil;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -77,11 +77,11 @@ public class NearSpansOrdered extends Spans {
   private SpanNearQuery query;
   private boolean collectPayloads = true;
   
-  public NearSpansOrdered(SpanNearQuery spanNearQuery, IndexReader reader) throws IOException {
-    this(spanNearQuery, reader, true);
+  public NearSpansOrdered(SpanNearQuery spanNearQuery, AtomicReaderContext context) throws IOException {
+    this(spanNearQuery, context, true);
   }
 
-  public NearSpansOrdered(SpanNearQuery spanNearQuery, IndexReader reader, boolean collectPayloads)
+  public NearSpansOrdered(SpanNearQuery spanNearQuery, AtomicReaderContext context, boolean collectPayloads)
   throws IOException {
     if (spanNearQuery.getClauses().length < 2) {
       throw new IllegalArgumentException("Less than 2 clauses: "
@@ -94,7 +94,7 @@ public class NearSpansOrdered extends Spans {
     matchPayload = new LinkedList<byte[]>();
     subSpansByDoc = new Spans[clauses.length];
     for (int i = 0; i < clauses.length; i++) {
-      subSpans[i] = clauses[i].getSpans(reader);
+      subSpans[i] = clauses[i].getSpans(context);
       subSpansByDoc[i] = subSpans[i]; // used in toSameDoc()
     }
     query = spanNearQuery; // kept for toString() only.
@@ -190,7 +190,7 @@ public class NearSpansOrdered extends Spans {
 
   /** Advance the subSpans to the same document */
   private boolean toSameDoc() throws IOException {
-    Arrays.sort(subSpansByDoc, spanDocComparator);
+    ArrayUtil.quickSort(subSpansByDoc, spanDocComparator);
     int firstIndex = 0;
     int maxDoc = subSpansByDoc[subSpansByDoc.length - 1].doc();
     while (subSpansByDoc[firstIndex].doc() != maxDoc) {

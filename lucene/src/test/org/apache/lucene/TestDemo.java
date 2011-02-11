@@ -43,7 +43,6 @@ import org.apache.lucene.util.LuceneTestCase;
 public class TestDemo extends LuceneTestCase {
 
   public void testDemo() throws IOException, ParseException {
-
     Analyzer analyzer = new MockAnalyzer();
 
     // Store the index in memory:
@@ -51,6 +50,7 @@ public class TestDemo extends LuceneTestCase {
     // To store an index on disk, use this instead:
     //Directory directory = FSDirectory.open("/tmp/testindex");
     RandomIndexWriter iwriter = new RandomIndexWriter(random, directory);
+    iwriter.w.setInfoStream(VERBOSE ? System.out : null);
     Document doc = new Document();
     String longTerm = "longtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongtermlongterm";
     String text = "This is the text to be indexed. " + longTerm;

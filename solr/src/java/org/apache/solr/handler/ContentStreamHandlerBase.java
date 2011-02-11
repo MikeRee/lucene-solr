@@ -32,6 +32,7 @@ import org.apache.solr.update.processor.UpdateRequestProcessorChain;
  **/
 public abstract class ContentStreamHandlerBase extends RequestHandlerBase {
 
+  @Override
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
     SolrParams params = req.getParams();
     UpdateRequestProcessorChain processorChain =
@@ -45,7 +46,7 @@ public abstract class ContentStreamHandlerBase extends RequestHandlerBase {
 
       Iterable<ContentStream> streams = req.getContentStreams();
       if (streams == null) {
-        if (!RequestHandlerUtils.handleCommit(processor, params, false) && !RequestHandlerUtils.handleRollback(processor, params, false)) {
+        if (!RequestHandlerUtils.handleCommit(req, processor, params, false) && !RequestHandlerUtils.handleRollback(req, processor, params, false)) {
           throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "missing content stream");
         }
       } else {
@@ -55,8 +56,8 @@ public abstract class ContentStreamHandlerBase extends RequestHandlerBase {
         }
 
         // Perhaps commit from the parameters
-        RequestHandlerUtils.handleCommit(processor, params, false);
-        RequestHandlerUtils.handleRollback(processor, params, false);
+        RequestHandlerUtils.handleCommit(req, processor, params, false);
+        RequestHandlerUtils.handleRollback(req, processor, params, false);
       }
     } finally {
       // finish the request

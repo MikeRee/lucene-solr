@@ -25,8 +25,6 @@ import org.apache.solr.schema.IndexSchema;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 /**
  *
  *
@@ -146,6 +144,7 @@ public class QueryParsingTest extends SolrTestCaseJ4 {
     sort = QueryParsing.parseSort("", req);
     assertNull(sort);
 
+    req.close();
   }
 
   @Test
@@ -194,6 +193,7 @@ public class QueryParsingTest extends SolrTestCaseJ4 {
     } catch (SolrException e) {
     }
 
+    req.close();
   }
 
 }

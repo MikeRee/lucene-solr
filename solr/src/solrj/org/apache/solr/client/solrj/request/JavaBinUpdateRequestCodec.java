@@ -67,6 +67,7 @@ public class JavaBinUpdateRequestCodec {
     nl.add("delByQ", updateRequest.getDeleteQuery());
     nl.add("docs", docIter);
     new JavaBinCodec(){
+      @Override
       public void writeMap(Map val) throws IOException {
         if (val instanceof SolrInputDocument) {
           writeVal(solrInputDocumentToList((SolrInputDocument) val));
@@ -101,6 +102,7 @@ public class JavaBinUpdateRequestCodec {
       // is ever refactored, this will not work.
       private boolean seenOuterMostDocIterator = false;
         
+      @Override
       public NamedList readNamedList(FastInputStream dis) throws IOException {
         int sz = readSize(dis);
         NamedList nl = new NamedList();
@@ -115,6 +117,7 @@ public class JavaBinUpdateRequestCodec {
         return nl;
       }
 
+      @Override
       public List readIterator(FastInputStream fis) throws IOException {
 
         // default behavior for reading any regular Iterator in the stream
@@ -128,7 +131,7 @@ public class JavaBinUpdateRequestCodec {
 
       private List readOuterMostDocIterator(FastInputStream fis) throws IOException {
         NamedList params = (NamedList) namedList[0].getVal(0);
-        updateRequest.setParams(namedListToSolrParams(params));
+        updateRequest.setParams(new ModifiableSolrParams(SolrParams.toSolrParams(params)));
         if (handler == null) return super.readIterator(fis);
         while (true) {
           Object o = readVal(fis);
@@ -205,17 +208,6 @@ public class JavaBinUpdateRequestCodec {
       nl.add(s, params.getParams(s));
     }
     return nl;
-  }
-
-  private ModifiableSolrParams namedListToSolrParams(NamedList nl) {
-    ModifiableSolrParams solrParams = new ModifiableSolrParams();
-    for (int i = 0; i < nl.size(); i++) {
-      List<String> l = (List) nl.getVal(i);
-      if (l != null)
-        solrParams.add(nl.getName(i),
-                l.toArray(new String[l.size()]));
-    }
-    return solrParams;
   }
 
   public static interface StreamingDocumentHandler {

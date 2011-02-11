@@ -16,13 +16,9 @@ package org.apache.solr.search.function;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.FieldCache;
-import org.apache.lucene.search.cache.FloatValuesCreator;
 import org.apache.lucene.search.cache.ShortValuesCreator;
-import org.apache.lucene.search.cache.CachedArray.FloatValues;
-import org.apache.lucene.search.cache.CachedArray.LongValues;
 import org.apache.lucene.search.cache.CachedArray.ShortValues;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 
 import java.io.IOException;
 import java.util.Map;
@@ -39,12 +35,14 @@ public class ShortFieldSource extends NumericFieldCacheSource<ShortValues> {
   }
 
 
+  @Override
   public String description() {
     return "short(" + field + ')';
   }
 
-  public DocValues getValues(Map context, IndexReader reader) throws IOException {
-    final ShortValues vals = cache.getShorts(reader, field, creator);
+  @Override
+  public DocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    final ShortValues vals = cache.getShorts(readerContext.reader, field, creator);
     final short[] arr = vals.values;
     
     return new DocValues() {
@@ -58,26 +56,32 @@ public class ShortFieldSource extends NumericFieldCacheSource<ShortValues> {
         return arr[doc];
       }
 
+      @Override
       public float floatVal(int doc) {
         return (float) arr[doc];
       }
 
+      @Override
       public int intVal(int doc) {
         return (int) arr[doc];
       }
 
+      @Override
       public long longVal(int doc) {
         return (long) arr[doc];
       }
 
+      @Override
       public double doubleVal(int doc) {
         return (double) arr[doc];
       }
 
+      @Override
       public String strVal(int doc) {
         return Short.toString(arr[doc]);
       }
 
+      @Override
       public String toString(int doc) {
         return description() + '=' + shortVal(doc);
       }

@@ -22,9 +22,12 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.SlowMultiReaderWrapper;
+import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.Weight.ScorerContext;
 import org.apache.lucene.store.Directory;
 
 import java.text.DecimalFormat;
@@ -59,8 +62,9 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     }
     
     @Override
-    public float lengthNorm(String fieldName, int numTerms) {
-      return 1.0f;
+    public float computeNorm(String fieldName, FieldInvertState state) {
+      // Disable length norm
+      return state.getBoost();
     }
     
     @Override
@@ -69,7 +73,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     }
   }
   
-  public Similarity sim = new TestSimilarity();
+  public SimilarityProvider sim = new TestSimilarity();
   public Directory index;
   public IndexReader r;
   public IndexSearcher s;
@@ -81,7 +85,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     index = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random, index,
         newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer())
-            .setSimilarity(sim));
+                                                     .setSimilarityProvider(sim).setMergePolicy(newInOrderLogMergePolicy()));
     
     // hed is the most important field, dek is secondary
     
@@ -143,10 +147,10 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       writer.addDocument(d4);
     }
     
-    r = writer.getReader();
+    r = new SlowMultiReaderWrapper(writer.getReader());
     writer.close();
-    s = new IndexSearcher(SlowMultiReaderWrapper.wrap(r));
-    s.setSimilarity(sim);
+    s = newSearcher(r);
+    s.setSimilarityProvider(sim);
   }
   
   @Override
@@ -162,10 +166,10 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     dq.add(tq("id", "d1"));
     dq.add(tq("dek", "DOES_NOT_EXIST"));
     
-    QueryUtils.check(dq, s);
-    
+    QueryUtils.check(random, dq, s);
+    assertTrue(s.getTopReaderContext().isAtomic);
     final Weight dw = dq.weight(s);
-    final Scorer ds = dw.scorer(s.getIndexReader(), true, false);
+    final Scorer ds = dw.scorer((AtomicReaderContext)s.getTopReaderContext(), ScorerContext.def());
     final boolean skipOk = ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS;
     if (skipOk) {
       fail("firsttime skipTo found a match? ... "
@@ -177,11 +181,10 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     final DisjunctionMaxQuery dq = new DisjunctionMaxQuery(0.0f);
     dq.add(tq("dek", "albino"));
     dq.add(tq("dek", "DOES_NOT_EXIST"));
-    
-    QueryUtils.check(dq, s);
-    
+    assertTrue(s.getTopReaderContext().isAtomic);
+    QueryUtils.check(random, dq, s);
     final Weight dw = dq.weight(s);
-    final Scorer ds = dw.scorer(s.getIndexReader(), true, false);
+    final Scorer ds = dw.scorer((AtomicReaderContext)s.getTopReaderContext(), ScorerContext.def());
     assertTrue("firsttime skipTo found no match",
         ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals("found wrong docid", "d4", r.document(ds.docID()).get("id"));
@@ -192,7 +195,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.0f);
     q.add(tq("hed", "albino"));
     q.add(tq("hed", "elephant"));
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -216,7 +219,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.0f);
     q.add(tq("dek", "albino"));
     q.add(tq("dek", "elephant"));
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -241,7 +244,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     q.add(tq("hed", "elephant"));
     q.add(tq("dek", "albino"));
     q.add(tq("dek", "elephant"));
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -264,7 +267,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.01f);
     q.add(tq("dek", "albino"));
     q.add(tq("dek", "elephant"));
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -292,7 +295,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       q1.add(tq("hed", "albino"));
       q1.add(tq("dek", "albino"));
       q.add(q1, BooleanClause.Occur.MUST);// true,false);
-      QueryUtils.check(q1, s);
+      QueryUtils.check(random, q1, s);
       
     }
     {
@@ -300,10 +303,10 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       q2.add(tq("hed", "elephant"));
       q2.add(tq("dek", "elephant"));
       q.add(q2, BooleanClause.Occur.MUST);// true,false);
-      QueryUtils.check(q2, s);
+      QueryUtils.check(random, q2, s);
     }
     
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -335,7 +338,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       q2.add(tq("dek", "elephant"));
       q.add(q2, BooleanClause.Occur.SHOULD);// false,false);
     }
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -371,7 +374,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       q2.add(tq("dek", "elephant"));
       q.add(q2, BooleanClause.Occur.SHOULD);// false,false);
     }
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -425,7 +428,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       q2.add(tq("dek", "elephant"));
       q.add(q2, BooleanClause.Occur.SHOULD);// false,false);
     }
-    QueryUtils.check(q, s);
+    QueryUtils.check(random, q, s);
     
     ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
     
@@ -473,7 +476,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     return q;
   }
   
-  protected void printHits(String test, ScoreDoc[] h, Searcher searcher)
+  protected void printHits(String test, ScoreDoc[] h, IndexSearcher searcher)
       throws Exception {
     
     System.err.println("------- " + test + " -------");

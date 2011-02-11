@@ -17,13 +17,12 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.Serializable;
 import java.io.IOException;
 import java.util.Map;
 import java.util.WeakHashMap;
 
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.util.OpenBitSetDISI;
 import org.apache.lucene.util.Bits;
 
@@ -38,6 +37,9 @@ import org.apache.lucene.util.Bits;
  * {@link DeletesMode#DYNAMIC}).
  */
 public class CachingWrapperFilter extends Filter {
+  // TODO: make this filter aware of ReaderContext. a cached filter could 
+  // specify the actual readers key or something similar to indicate on which
+  // level of the readers hierarchy it should be cached.
   Filter filter;
 
   /**
@@ -65,7 +67,7 @@ public class CachingWrapperFilter extends Filter {
 
   protected final FilterCache<DocIdSet> cache;
 
-  static abstract class FilterCache<T> implements Serializable {
+  static abstract class FilterCache<T> {
 
     /**
      * A transient Filter cache (package private because of test)
@@ -105,7 +107,7 @@ public class CachingWrapperFilter extends Filter {
           // deletions
           value = cache.get(coreKey);
           if (value != null) {
-            final Bits delDocs = MultiFields.getDeletedDocs(reader);
+            final Bits delDocs = reader.getDeletedDocs();
             if (delDocs != null) {
               value = mergeDeletes(delDocs, value);
             }
@@ -192,10 +194,10 @@ public class CachingWrapperFilter extends Filter {
   int hitCount, missCount;
 
   @Override
-  public DocIdSet getDocIdSet(IndexReader reader) throws IOException {
-
+  public DocIdSet getDocIdSet(AtomicReaderContext context) throws IOException {
+    final IndexReader reader = context.reader;
     final Object coreKey = reader.getCoreCacheKey();
-    final Object delCoreKey = reader.hasDeletions() ? MultiFields.getDeletedDocs(reader) : coreKey;
+    final Object delCoreKey = reader.hasDeletions() ? reader.getDeletedDocs() : coreKey;
 
     DocIdSet docIdSet = cache.get(reader, coreKey, delCoreKey);
     if (docIdSet != null) {
@@ -206,7 +208,7 @@ public class CachingWrapperFilter extends Filter {
     missCount++;
 
     // cache miss
-    docIdSet = docIdSetToCache(filter.getDocIdSet(reader), reader);
+    docIdSet = docIdSetToCache(filter.getDocIdSet(context), reader);
 
     if (docIdSet != null) {
       cache.put(coreKey, delCoreKey, docIdSet);

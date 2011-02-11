@@ -24,6 +24,7 @@ import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowMultiReaderWrapper;
 import org.apache.lucene.index.Term;
@@ -32,7 +33,6 @@ import org.apache.lucene.util.LuceneTestCase;
 
 public class BooleanFilterTest extends LuceneTestCase {
 	private Directory directory;
-	private IndexReader mainReader;
 	private IndexReader reader;
 
 	@Override
@@ -47,14 +47,13 @@ public class BooleanFilterTest extends LuceneTestCase {
 		addDoc(writer, "guest", "020", "20050101","Y");
 		addDoc(writer, "admin", "020", "20050101","Maybe");
 		addDoc(writer, "admin guest", "030", "20050101","N");
-		mainReader = writer.getReader();
-		reader = SlowMultiReaderWrapper.wrap(mainReader);
+		reader = new SlowMultiReaderWrapper(writer.getReader());
 		writer.close();	
 	}
 	
 	@Override
 	public void tearDown() throws Exception {
-	  mainReader.close();
+	  reader.close();
 	  directory.close();
 	  super.tearDown();
 	}
@@ -85,7 +84,7 @@ public class BooleanFilterTest extends LuceneTestCase {
         private void tstFilterCard(String mes, int expected, Filter filt)
         throws Throwable
         {
-          DocIdSetIterator disi = filt.getDocIdSet(reader).iterator();
+          DocIdSetIterator disi = filt.getDocIdSet(new AtomicReaderContext(reader)).iterator();
           int actual = 0;
           while (disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             actual++;

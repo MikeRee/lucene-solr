@@ -65,7 +65,7 @@ public class TestBooleanMinShouldMatch extends LuceneTestCase {
         }
 
         r = w.getReader();
-        s = new IndexSearcher(r);
+        s = newSearcher(r);
         w.close();
 //System.out.println("Set up " + getName());
     }
@@ -85,7 +85,7 @@ public class TestBooleanMinShouldMatch extends LuceneTestCase {
             printHits(getName(), h, s);
         }
         assertEquals("result count", expected, h.length);
-        QueryUtils.check(q,s);
+        QueryUtils.check(random, q,s);
     }
 
     public void testAllOptional() throws Exception {
@@ -329,8 +329,8 @@ public class TestBooleanMinShouldMatch extends LuceneTestCase {
         TopDocs top1 = s.search(q1,null,100);
         TopDocs top2 = s.search(q2,null,100);
         if (i < 100) {
-          QueryUtils.check(q1,s);
-          QueryUtils.check(q2,s);
+          QueryUtils.check(random, q1,s);
+          QueryUtils.check(random, q2,s);
         }
         // The constrained query
         // should be a superset to the unconstrained query.
@@ -372,7 +372,7 @@ public class TestBooleanMinShouldMatch extends LuceneTestCase {
 
 
 
-    protected void printHits(String test, ScoreDoc[] h, Searcher searcher) throws Exception {
+    protected void printHits(String test, ScoreDoc[] h, IndexSearcher searcher) throws Exception {
 
         System.err.println("------- " + test + " -------");
 

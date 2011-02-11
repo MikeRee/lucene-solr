@@ -20,17 +20,13 @@ package org.apache.solr.core;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.handler.admin.ShowFileRequestHandler;
-import org.apache.solr.search.SolrIndexReader;
-import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.update.DirectUpdateHandler2;
 import org.apache.solr.update.SolrIndexConfig;
-import org.apache.solr.util.RefCounted;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-
-import static org.junit.Assert.*;
 
 import javax.xml.xpath.XPathConstants;
 import java.io.IOException;
@@ -129,10 +125,12 @@ public class TestConfig extends SolrTestCaseJ4 {
         return writer;
       }
     }
-    
-    IndexWriter writer = new ExposeWriterHandler().getWriter();
-    int interval = writer.getTermIndexInterval();
+
+    ExposeWriterHandler duh = new ExposeWriterHandler();
+    IndexWriter writer = duh.getWriter();
+    int interval = writer.getConfig().getTermIndexInterval();
     assertEquals(256, interval);
+    duh.close();
   }
 
   @Test
@@ -140,9 +138,9 @@ public class TestConfig extends SolrTestCaseJ4 {
     IndexReaderFactory irf = h.getCore().getIndexReaderFactory();
     StandardIndexReaderFactory sirf = (StandardIndexReaderFactory) irf;
     assertEquals(12, sirf.termInfosIndexDivisor);
-    RefCounted<SolrIndexSearcher> refCounted = h.getCore().getSearcher();
-    SolrIndexReader solrReader = refCounted.get().getReader();
-    assertEquals(12, solrReader.getTermInfosIndexDivisor());
+    SolrQueryRequest req = req();
+    assertEquals(12, req.getSearcher().getIndexReader().getTermInfosIndexDivisor());
+    req.close();
   }
 
 

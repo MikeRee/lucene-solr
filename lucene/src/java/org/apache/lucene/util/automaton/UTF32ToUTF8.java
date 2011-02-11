@@ -26,7 +26,8 @@ import java.util.ArrayList;
 // TODO
 //   - do we really need the .bits...?  if not we can make util in UnicodeUtil to convert 1 char into a BytesRef
 
-final class UTF32ToUTF8 {
+/** @lucene.internal */
+public final class UTF32ToUTF8 {
 
   // Unicode boundaries for UTF8 bytes 1,2,3,4
   private static final int[] startCodes = new int[] {0, 128, 2048, 65536};
@@ -105,6 +106,7 @@ final class UTF32ToUTF8 {
       }
     }
 
+    @Override
     public String toString() {
       StringBuilder b = new StringBuilder();
       for(int i=0;i<len;i++) {
@@ -299,7 +301,7 @@ final class UTF32ToUTF8 {
   private State newUTF8State() {
     State s = new State();
     if (utf8StateCount == utf8States.length) {
-      final State[] newArray = new State[ArrayUtil.oversize(1+utf8StateCount, RamUsageEstimator.NUM_BYTES_OBJ_REF)];
+      final State[] newArray = new State[ArrayUtil.oversize(1+utf8StateCount, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
       System.arraycopy(utf8States, 0, newArray, 0, utf8StateCount);
       utf8States = newArray;
     }

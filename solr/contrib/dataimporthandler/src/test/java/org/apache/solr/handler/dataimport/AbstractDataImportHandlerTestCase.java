@@ -19,6 +19,15 @@ package org.apache.solr.handler.dataimport;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.request.LocalSolrQueryRequest;
+import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.update.AddUpdateCommand;
+import org.apache.solr.update.CommitUpdateCommand;
+import org.apache.solr.update.DeleteUpdateCommand;
+import org.apache.solr.update.MergeIndexesCommand;
+import org.apache.solr.update.RollbackUpdateCommand;
+import org.apache.solr.update.processor.UpdateRequestProcessor;
+import org.apache.solr.update.processor.UpdateRequestProcessorFactory;
 import org.apache.solr.common.util.NamedList;
 import org.junit.After;
 import org.junit.Before;
@@ -43,6 +52,11 @@ import java.util.Map;
 public abstract class AbstractDataImportHandlerTestCase extends
         SolrTestCaseJ4 {
 
+  // note, a little twisted that we shadow this static method
+  public static void initCore(String config, String schema) throws Exception {
+    initCore(config, schema, "solr-dih");
+  }
+  
   @Override
   @Before
   public void setUp() throws Exception {
@@ -183,91 +197,183 @@ public abstract class AbstractDataImportHandlerTestCase extends
       this.root = root;
     }
 
+    @Override
     public String getEntityAttribute(String name) {
       return entityAttrs == null ? delegate.getEntityAttribute(name) : entityAttrs.get(name);
     }
 
+    @Override
     public String getResolvedEntityAttribute(String name) {
       return entityAttrs == null ? delegate.getResolvedEntityAttribute(name) :
               delegate.getVariableResolver().replaceTokens(entityAttrs.get(name));
     }
 
+    @Override
     public List<Map<String, String>> getAllEntityFields() {
       return entityFields == null ? delegate.getAllEntityFields()
               : entityFields;
     }
 
+    @Override
     public VariableResolver getVariableResolver() {
       return delegate.getVariableResolver();
     }
 
+    @Override
     public DataSource getDataSource() {
       return delegate.getDataSource();
     }
 
+    @Override
     public boolean isRootEntity() {
       return root;
     }
 
+    @Override
     public String currentProcess() {
       return delegate.currentProcess();
     }
 
+    @Override
     public Map<String, Object> getRequestParameters() {
       return delegate.getRequestParameters();
     }
 
+    @Override
     public EntityProcessor getEntityProcessor() {
       return null;
     }
 
+    @Override
     public void setSessionAttribute(String name, Object val, String scope) {
       delegate.setSessionAttribute(name, val, scope);
     }
 
+    @Override
     public Object getSessionAttribute(String name, String scope) {
       return delegate.getSessionAttribute(name, scope);
     }
 
+    @Override
     public Context getParentContext() {
       return delegate.getParentContext();
     }
 
+    @Override
     public DataSource getDataSource(String name) {
       return delegate.getDataSource(name);
     }
 
+    @Override
     public SolrCore getSolrCore() {
       return delegate.getSolrCore();
     }
 
+    @Override
     public Map<String, Object> getStats() {
       return delegate.getStats();
     }
 
 
+    @Override
     public String getScript() {
       return script == null ? delegate.getScript() : script;
     }
 
+    @Override
     public String getScriptLanguage() {
       return scriptlang == null ? delegate.getScriptLanguage() : scriptlang;
     }
 
+    @Override
     public void deleteDoc(String id) {
 
     }
 
+    @Override
     public void deleteDocByQuery(String query) {
 
     }
 
+    @Override
     public Object resolve(String var) {
       return delegate.resolve(var);
     }
 
+    @Override
     public String replaceTokens(String template) {
       return delegate.replaceTokens(template);
     }
+  }
+
+  public static class TestUpdateRequestProcessorFactory extends UpdateRequestProcessorFactory {
+
+    @Override
+    public UpdateRequestProcessor getInstance(SolrQueryRequest req,
+        SolrQueryResponse rsp, UpdateRequestProcessor next) {
+      return new TestUpdateRequestProcessor(next);
+    }
+    
+  }
+  
+  public static class TestUpdateRequestProcessor extends UpdateRequestProcessor {
+  
+    public static boolean finishCalled = false;
+    public static boolean processAddCalled = false;
+    public static boolean processCommitCalled = false;
+    public static boolean processDeleteCalled = false;
+    public static boolean mergeIndexesCalled = false;
+    public static boolean rollbackCalled = false;
+  
+    public static void reset() {
+      finishCalled = false;
+      processAddCalled = false;
+      processCommitCalled = false;
+      processDeleteCalled = false;
+      mergeIndexesCalled = false;
+      rollbackCalled = false;
+    }
+    
+    public TestUpdateRequestProcessor(UpdateRequestProcessor next) {
+      super(next);
+      reset();
+    }
+
+    @Override
+    public void finish() throws IOException {
+      finishCalled = true;
+      super.finish();
+    }
+
+    @Override
+    public void processAdd(AddUpdateCommand cmd) throws IOException {
+      processAddCalled = true;
+      super.processAdd(cmd);
+    }
+
+    @Override
+    public void processCommit(CommitUpdateCommand cmd) throws IOException {
+      processCommitCalled = true;
+      super.processCommit(cmd);
+    }
+
+    @Override
+    public void processDelete(DeleteUpdateCommand cmd) throws IOException {
+      processDeleteCalled = true;
+      super.processDelete(cmd);
+    }
+
+    @Override
+    public void processMergeIndexes(MergeIndexesCommand cmd) throws IOException {
+      mergeIndexesCalled = true;
+      super.processMergeIndexes(cmd);
+    }
+
+    @Override
+    public void processRollback(RollbackUpdateCommand cmd) throws IOException {
+      rollbackCalled = true;
+      super.processRollback(cmd);
+    }
+    
   }
 }

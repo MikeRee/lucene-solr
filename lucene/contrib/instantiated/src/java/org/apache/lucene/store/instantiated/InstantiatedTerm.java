@@ -16,7 +16,6 @@ package org.apache.lucene.store.instantiated;
  * limitations under the License.
  */
 
-import java.io.Serializable;
 import java.util.Comparator;
 
 import org.apache.lucene.index.Term;
@@ -26,10 +25,7 @@ import org.apache.lucene.index.Term;
  *
  * @see org.apache.lucene.index.Term
  */
-public class InstantiatedTerm
-    implements Serializable {
-
-  private static final long serialVersionUID = 1l;
+public class InstantiatedTerm {
 
   public static final Comparator<InstantiatedTerm> comparator = new Comparator<InstantiatedTerm>() {
     public int compare(InstantiatedTerm instantiatedTerm, InstantiatedTerm instantiatedTerm1) {
@@ -44,6 +40,8 @@ public class InstantiatedTerm
   };
   
   private Term term;
+
+  private long totalTermFreq;
 
   /**
    * index of term in InstantiatedIndex
@@ -90,6 +88,14 @@ public class InstantiatedTerm
    */
   void setAssociatedDocuments(InstantiatedTermDocumentInformation[] associatedDocuments) {
     this.associatedDocuments = associatedDocuments;
+  }
+
+  void addPositionsCount(long count) {
+    totalTermFreq += count;
+  }
+
+  public long getTotalTermFreq() {
+    return totalTermFreq;
   }
 
   /**

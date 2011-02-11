@@ -17,13 +17,9 @@
 
 package org.apache.solr.search;
 
-import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
-import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.SolrException;
-
 import java.io.IOException;
 import java.util.List;
 
@@ -60,10 +56,12 @@ public final class QueryResultKey {
     hc = h;
   }
 
+  @Override
   public int hashCode() {
     return hc;
   }
 
+  @Override
   public boolean equals(Object o) {
     if (o==this) return true;
     if (!(o instanceof QueryResultKey)) return false;

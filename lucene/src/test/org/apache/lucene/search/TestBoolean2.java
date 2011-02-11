@@ -37,8 +37,6 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 /** Test BooleanQuery2 against BooleanQuery by overriding the standard query parser.
  * This also tests the scoring order of BooleanQuery.
  */
@@ -56,7 +54,7 @@ public class TestBoolean2 extends LuceneTestCase {
   @BeforeClass
   public static void beforeClass() throws Exception {
     directory = newDirectory();
-    RandomIndexWriter writer= new RandomIndexWriter(random, directory);
+    RandomIndexWriter writer= new RandomIndexWriter(random, directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer()).setMergePolicy(newInOrderLogMergePolicy()));
     for (int i = 0; i < docFields.length; i++) {
       Document doc = new Document();
       doc.add(newField(field, docFields[i], Field.Store.NO, Field.Index.ANALYZED));
@@ -66,15 +64,15 @@ public class TestBoolean2 extends LuceneTestCase {
     searcher = new IndexSearcher(directory, true);
 
     // Make big index
-    dir2 = new MockDirectoryWrapper(new RAMDirectory(directory));
+    dir2 = new MockDirectoryWrapper(random, new RAMDirectory(directory));
 
     // First multiply small test index:
     mulFactor = 1;
     int docCount = 0;
     do {
-      final Directory copy = new MockDirectoryWrapper(new RAMDirectory(dir2));
+      final Directory copy = new MockDirectoryWrapper(random, new RAMDirectory(dir2));
       RandomIndexWriter w = new RandomIndexWriter(random, dir2);
-      w.addIndexes(new Directory[] {copy});
+      w.addIndexes(copy);
       docCount = w.maxDoc();
       w.close();
       mulFactor *= 2;
@@ -94,7 +92,7 @@ public class TestBoolean2 extends LuceneTestCase {
       w.addDocument(doc);
     }
     reader = w.getReader();
-    bigSearcher = new IndexSearcher(reader);
+    bigSearcher = newSearcher(reader);
     w.close();
   }
 
@@ -210,9 +208,9 @@ public class TestBoolean2 extends LuceneTestCase {
   public void testQueries10() throws Exception {
     String queryText = "+w3 +xx +w2 zz";
     int[] expDocNrs = {2, 3};
-    Similarity oldSimilarity = searcher.getSimilarity();
+    SimilarityProvider oldSimilarity = searcher.getSimilarityProvider();
     try {
-      searcher.setSimilarity(new DefaultSimilarity(){
+      searcher.setSimilarityProvider(new DefaultSimilarity(){
         @Override
         public float coord(int overlap, int maxOverlap) {
           return overlap / ((float)maxOverlap - 1);
@@ -220,7 +218,7 @@ public class TestBoolean2 extends LuceneTestCase {
       });
       queriesTest(queryText, expDocNrs);
     } finally {
-      searcher.setSimilarity(oldSimilarity);
+      searcher.setSimilarityProvider(oldSimilarity);
     }
   }
 
@@ -243,7 +241,7 @@ public class TestBoolean2 extends LuceneTestCase {
         // match up.
         Sort sort = Sort.INDEXORDER;
 
-        QueryUtils.check(q1,searcher);
+        QueryUtils.check(random, q1,searcher);
 
         TopFieldCollector collector = TopFieldCollector.create(sort, 1000,
             false, true, true, true);

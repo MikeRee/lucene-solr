@@ -38,11 +38,10 @@ import org.apache.solr.common.params.MultiMapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.request.SolrQueryRequest;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 public class SolrRequestParserTest extends SolrTestCaseJ4 {
 
@@ -73,36 +72,39 @@ public class SolrRequestParserTest extends SolrTestCaseJ4 {
     
     // Make sure it got a single stream in and out ok
     List<ContentStream> streams = new ArrayList<ContentStream>();
-    parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
+    SolrQueryRequest req = parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
     assertEquals( 1, streams.size() );
-    assertEquals( body1, IOUtils.toString( streams.get(0).getStream() ) );
-    
+    assertEquals( body1, IOUtils.toString( streams.get(0).getReader() ) );
+    req.close();
+
     // Now add three and make sure they come out ok
     streams = new ArrayList<ContentStream>();
     args.put( CommonParams.STREAM_BODY, new String[] {body1,body2,body3} );
-    parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
+    req = parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
     assertEquals( 3, streams.size() );
     ArrayList<String> input  = new ArrayList<String>();
     ArrayList<String> output = new ArrayList<String>();
     input.add( body1 );
     input.add( body2 );
     input.add( body3 );
-    output.add( IOUtils.toString( streams.get(0).getStream() ) );
-    output.add( IOUtils.toString( streams.get(1).getStream() ) );
-    output.add( IOUtils.toString( streams.get(2).getStream() ) );
+    output.add( IOUtils.toString( streams.get(0).getReader() ) );
+    output.add( IOUtils.toString( streams.get(1).getReader() ) );
+    output.add( IOUtils.toString( streams.get(2).getReader() ) );
     // sort them so the output is consistent
     Collections.sort( input );
     Collections.sort( output );
     assertEquals( input.toString(), output.toString() );
-    
+    req.close();
+
     // set the contentType and make sure tat gets set
     String ctype = "text/xxx";
     streams = new ArrayList<ContentStream>();
     args.put( CommonParams.STREAM_CONTENTTYPE, new String[] {ctype} );
-    parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
+    req = parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
     for( ContentStream s : streams ) {
       assertEquals( ctype, s.getContentType() );
     }
+    req.close();
   }
   
   @Test
@@ -110,17 +112,16 @@ public class SolrRequestParserTest extends SolrTestCaseJ4 {
   {
     boolean ok = false;
     String url = "http://www.apache.org/dist/lucene/solr/";
-    String txt = null;
+    byte[] bytes = null;
     try {
       URLConnection connection = new URL(url).openConnection();
       connection.setConnectTimeout(5000);
       connection.setReadTimeout(5000);
       connection.connect();
-      txt = IOUtils.toString( connection.getInputStream());
+      bytes = IOUtils.toByteArray( connection.getInputStream());
     }
     catch( Exception ex ) {
-      // TODO - should it fail/skip?
-      fail( "this test only works if you have a network connection." );
+      assumeNoException("Unable to connect to " + url + " to run the test.", ex);
       return;
     }
 
@@ -131,9 +132,10 @@ public class SolrRequestParserTest extends SolrTestCaseJ4 {
     
     // Make sure it got a single stream in and out ok
     List<ContentStream> streams = new ArrayList<ContentStream>();
-    parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
+    SolrQueryRequest req = parser.buildRequestFrom( core, new MultiMapSolrParams( args ), streams );
     assertEquals( 1, streams.size() );
-    assertEquals( txt, IOUtils.toString( streams.get(0).getStream() ) );
+    assertArrayEquals( bytes, IOUtils.toByteArray( streams.get(0).getStream() ) );
+    req.close();
   }
   
   @Test

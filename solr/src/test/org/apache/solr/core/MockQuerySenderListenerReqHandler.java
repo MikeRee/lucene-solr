@@ -19,6 +19,9 @@ package org.apache.solr.core;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.common.util.NamedList;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -29,28 +32,49 @@ public class MockQuerySenderListenerReqHandler extends RequestHandlerBase {
   public SolrQueryRequest req;
   public SolrQueryResponse rsp;
 
+  AtomicInteger initCounter = new AtomicInteger(0);
+
+  @Override
+  public void init(NamedList args) {
+    initCounter.incrementAndGet();
+    super.init(args);
+  }
+
+  @Override
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
     this.req = req;
     this.rsp = rsp;
   }
 
+  @Override
   public String getDescription() {
     String result = null;
     return result;
   }
 
+  @Override
   public String getSourceId() {
     String result = null;
     return result;
   }
 
+  @Override
   public String getSource() {
     String result = null;
     return result;
   }
 
+  @Override
   public String getVersion() {
     String result = null;
     return result;
   }
+
+  @Override
+  public NamedList<Object> getStatistics() {
+    NamedList<Object> lst = super.getStatistics();
+    lst.add("initCount", initCounter.intValue());
+    return lst;
+  }
+ 
 }

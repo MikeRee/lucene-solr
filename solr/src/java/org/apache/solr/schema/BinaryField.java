@@ -18,7 +18,6 @@
 package org.apache.solr.schema;
 
 import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 import org.apache.solr.common.util.Base64;
 import org.apache.lucene.document.Fieldable;
 import org.apache.lucene.document.Field;
@@ -30,32 +29,32 @@ import java.nio.ByteBuffer;
 
 public class BinaryField extends FieldType  {
 
-  public void write(XMLWriter xmlWriter, String name, Fieldable f) throws IOException {
-    xmlWriter.writeStr( name, toBase64String(toObject(f)) );
-  }
-
   private String  toBase64String(ByteBuffer buf) {
     return Base64.byteArrayToBase64(buf.array(), buf.position(), buf.limit()-buf.position());
   }
 
+  @Override
   public void write(TextResponseWriter writer, String name, Fieldable f) throws IOException {
     writer.writeStr(name, toBase64String(toObject(f)), false);
   }
 
+  @Override
   public SortField getSortField(SchemaField field, boolean top) {
     throw new RuntimeException("Cannot sort on a Binary field");
   }
 
 
+  @Override
   public String toExternal(Fieldable f) {
     return toBase64String(toObject(f));
   }
   
+  @Override
   public ByteBuffer toObject(Fieldable f) {
     return  ByteBuffer.wrap(f.getBinaryValue(), f.getBinaryOffset(), f.getBinaryLength() ) ;
   }
 
-  public Field createField(SchemaField field, Object val, float boost) {
+  public Fieldable createField(SchemaField field, Object val, float boost) {
     if (val == null) return null;
     if (!field.stored()) {
       log.trace("Ignoring unstored binary field: " + field);
@@ -79,8 +78,7 @@ public class BinaryField extends FieldType  {
       len = buf.length;
     }
 
-    Field f = new Field(field.getName(), buf, offset, len,
-            getFieldStore(field, null));
+    Field f = new Field(field.getName(), buf, offset, len);
     f.setBoost(boost);
     return f;
   }

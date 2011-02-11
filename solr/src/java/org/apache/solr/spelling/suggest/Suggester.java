@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.util.Collections;
 import java.util.List;
 
 import org.apache.lucene.analysis.Token;
@@ -75,7 +76,7 @@ public class Suggester extends SolrSpellChecker {
     LOG.info("init: " + config);
     String name = super.init(config, core);
     threshold = config.get(THRESHOLD_TOKEN_FREQUENCY) == null ? 0.0f
-            : Float.valueOf((String)config.get(THRESHOLD_TOKEN_FREQUENCY));
+            : (Float)config.get(THRESHOLD_TOKEN_FREQUENCY);
     sourceLocation = (String) config.get(LOCATION);
     field = (String)config.get(FIELD);
     lookupImpl = (String)config.get(LOOKUP_IMPL);
@@ -99,7 +100,7 @@ public class Suggester extends SolrSpellChecker {
   public void build(SolrCore core, SolrIndexSearcher searcher) {
     LOG.info("build()");
     if (sourceLocation == null) {
-      reader = searcher.getReader();
+      reader = searcher.getIndexReader();
       dictionary = new HighFrequencyDictionary(reader, field, threshold);
     } else {
       try {
@@ -128,20 +129,10 @@ public class Suggester extends SolrSpellChecker {
       if (lookup.load(storeDir)) {
         return;  // loaded ok
       }
+      LOG.debug("load failed, need to build Lookup again");
     }
-    // dictionary based on the current index may need refreshing
-    if (dictionary instanceof HighFrequencyDictionary) {
-      reader = reader.reopen();
-      dictionary = new HighFrequencyDictionary(reader, field, threshold);
-      try {
-        lookup.build(dictionary);
-        if (storeDir != null) {
-          lookup.store(storeDir);
-        }
-      } catch (Exception e) {
-        throw new IOException(e);
-      }
-    }
+    // loading was unsuccessful - build it again
+    build(core, searcher);
   }
 
   public void add(String query, int numHits) {
@@ -165,6 +156,9 @@ public class Suggester extends SolrSpellChecker {
           options.onlyMorePopular, options.count);
       if (suggestions == null) {
         continue;
+      }
+      if (!options.onlyMorePopular) {
+        Collections.sort(suggestions);
       }
       for (LookupResult lr : suggestions) {
         res.add(t, lr.key, ((Number)lr.value).intValue());

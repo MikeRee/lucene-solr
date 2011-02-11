@@ -19,6 +19,7 @@ package org.apache.solr.search.function;
 
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.search.MutableValue;
 import org.apache.solr.search.MutableValueStr;
@@ -33,13 +34,17 @@ public abstract class StringIndexDocValues extends DocValues {
     protected final ValueSource vs;
     protected final MutableValueStr val = new MutableValueStr();
 
-    public StringIndexDocValues(ValueSource vs, IndexReader reader, String field) throws IOException {
+    public StringIndexDocValues(ValueSource vs, AtomicReaderContext context, String field) throws IOException {
       try {
-        termsIndex = FieldCache.DEFAULT.getTermsIndex(reader, field);
+        termsIndex = FieldCache.DEFAULT.getTermsIndex(context.reader, field);
       } catch (RuntimeException e) {
         throw new StringIndexException(field, e);
       }
       this.vs = vs;
+    }
+
+    public FieldCache.DocTermsIndex getDocTermsIndex() {
+      return termsIndex;
     }
   
     protected abstract String toTerm(String readableValue);
@@ -84,6 +89,7 @@ public abstract class StringIndexDocValues extends DocValues {
       };
     }
 
+  @Override
   public String toString(int doc) {
     return vs.description() + '=' + strVal(doc);
   }
@@ -100,7 +106,9 @@ public abstract class StringIndexDocValues extends DocValues {
 
       @Override
       public void fillValue(int doc) {
-        mval.value = termsIndex.getTerm(doc, val.value);
+        int ord = termsIndex.getOrd(doc);
+        mval.exists = ord != 0;
+        mval.value = termsIndex.lookup(ord, mval.value);
       }
     };
   }

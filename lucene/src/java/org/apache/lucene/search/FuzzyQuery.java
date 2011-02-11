@@ -17,9 +17,10 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.ToStringUtils;
 import org.apache.lucene.util.automaton.LevenshteinAutomata;
 
@@ -135,11 +136,13 @@ public class FuzzyQuery extends MultiTermQuery {
   }
 
   @Override
-  protected TermsEnum getTermsEnum(IndexReader reader) throws IOException {
+  protected TermsEnum getTermsEnum(Terms terms, AttributeSource atts) throws IOException {
+    TermsEnum tenum = terms.iterator();
+    
     if (!termLongEnough) {  // can only match if it's exact
-      return new SingleTermsEnum(reader, term);
+      return new SingleTermsEnum(tenum, term);
     }
-    return new FuzzyTermsEnum(reader, getTerm(), minimumSimilarity, prefixLength);
+    return new FuzzyTermsEnum(tenum, atts, getTerm(), minimumSimilarity, prefixLength);
   }
   
   /**

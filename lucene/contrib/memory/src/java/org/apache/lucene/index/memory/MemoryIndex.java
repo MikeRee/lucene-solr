@@ -18,13 +18,13 @@ package org.apache.lucene.index.memory;
  */
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.io.StringReader;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -38,6 +38,9 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldSelector;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.IndexReader.AtomicReaderContext;
+import org.apache.lucene.index.OrdTermState;
+import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.FieldsEnum;
@@ -48,13 +51,15 @@ import org.apache.lucene.index.TermFreqVector;
 import org.apache.lucene.index.TermPositionVector;
 import org.apache.lucene.index.TermVectorMapper;
 import org.apache.lucene.index.FieldInvertState;
+import org.apache.lucene.index.IndexReader.ReaderContext;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Searcher;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Similarity;
+import org.apache.lucene.search.SimilarityProvider;
 import org.apache.lucene.store.RAMDirectory; // for javadocs
+import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.Constants; // for javadocs
@@ -180,7 +185,7 @@ import org.apache.lucene.util.Constants; // for javadocs
  * hprof tracing </a>).
  *
  */
-public class MemoryIndex implements Serializable {
+public class MemoryIndex {
 
   /** info for each field: Map<String fieldName, Info field> */
   private final HashMap<String,Info> fields = new HashMap<String,Info>();
@@ -193,8 +198,6 @@ public class MemoryIndex implements Serializable {
   
   /** Could be made configurable; See {@link Document#setBoost(float)} */
   private static final float docBoost = 1.0f;
-  
-  private static final long serialVersionUID = 2782195016849084649L;
 
   private static final boolean DEBUG = false;
   
@@ -420,7 +423,7 @@ public class MemoryIndex implements Serializable {
     if (query == null) 
       throw new IllegalArgumentException("query must not be null");
     
-    Searcher searcher = createSearcher();
+    IndexSearcher searcher = createSearcher();
     try {
       final float[] scores = new float[1]; // inits to 0.0f (no match)
       searcher.search(query, new Collector() {
@@ -442,7 +445,7 @@ public class MemoryIndex implements Serializable {
         }
 
         @Override
-        public void setNextReader(IndexReader reader, int docBase) { }
+        public void setNextReader(AtomicReaderContext context) { }
       });
       float score = scores[0];
       return score;
@@ -522,7 +525,7 @@ public class MemoryIndex implements Serializable {
       entries[i] = iter.next();
     }
     
-    if (size > 1) Arrays.sort(entries, termComparator);
+    if (size > 1) ArrayUtil.quickSort(entries, termComparator);
     return entries;
   }
   
@@ -583,7 +586,7 @@ public class MemoryIndex implements Serializable {
    * Index data structure for a field; Contains the tokenized term texts and
    * their positions.
    */
-  private static final class Info implements Serializable {
+  private static final class Info {
     
     /**
      * Term strings and their positions for this field: Map <String
@@ -606,13 +609,22 @@ public class MemoryIndex implements Serializable {
     /** Term for this field's fieldName, lazily computed on demand */
     public transient Term template;
 
-    private static final long serialVersionUID = 2882195016849084649L;  
+    private final long sumTotalTermFreq;
 
     public Info(HashMap<BytesRef,ArrayIntList> terms, int numTokens, int numOverlapTokens, float boost) {
       this.terms = terms;
       this.numTokens = numTokens;
       this.numOverlapTokens = numOverlapTokens;
       this.boost = boost;
+      long sum = 0;
+      for(Map.Entry<BytesRef,ArrayIntList> ent : terms.entrySet()) {
+        sum += ent.getValue().size();
+      }
+      sumTotalTermFreq = sum;
+    }
+
+    public long getSumTotalTermFreq() {
+      return sumTotalTermFreq;
     }
     
     /**
@@ -651,12 +663,10 @@ public class MemoryIndex implements Serializable {
    * Efficient resizable auto-expanding list holding <code>int</code> elements;
    * implemented with arrays.
    */
-  private static final class ArrayIntList implements Serializable {
+  private static final class ArrayIntList {
 
     private int[] elements;
     private int size = 0;
-    
-    private static final long serialVersionUID = 2282195016849084649L;  
       
     public ArrayIntList() {
       this(10);
@@ -737,10 +747,12 @@ public class MemoryIndex implements Serializable {
    */
   private final class MemoryIndexReader extends IndexReader {
     
-    private Searcher searcher; // needed to find searcher.getSimilarity() 
+    private IndexSearcher searcher; // needed to find searcher.getSimilarity() 
+    private final ReaderContext readerInfos = new AtomicReaderContext(this);
     
     private MemoryIndexReader() {
       super(); // avoid as much superclass baggage as possible
+      readerFinishedListeners = Collections.synchronizedSet(new HashSet<ReaderFinishedListener>());
     }
     
     private Info getInfo(String fieldName) {
@@ -763,6 +775,11 @@ public class MemoryIndex implements Serializable {
       if (info != null) freq = info.getPositions(term.bytes()) != null ? 1 : 0;
       if (DEBUG) System.err.println("MemoryIndexReader.docFreq: " + term + ", freq:" + freq);
       return freq;
+    }
+    
+    @Override
+    public ReaderContext getTopReaderContext() {
+      return readerInfos;
     }
   
     @Override
@@ -815,6 +832,11 @@ public class MemoryIndex implements Serializable {
               @Override
               public long getUniqueTermCount() {
                 return info.sortedTerms.length;
+              }
+
+              @Override
+              public long getSumTotalTermFreq() {
+                return info.getSumTotalTermFreq();
               }
             };
           }
@@ -876,16 +898,17 @@ public class MemoryIndex implements Serializable {
       }
 
       @Override
-      public void cacheCurrentTerm() {
-      }
-
-      @Override
       public long ord() {
         return termUpto;
       }
 
       @Override
       public int docFreq() {
+        return 1;
+      }
+
+      @Override
+      public long totalTermFreq() {
         return info.sortedTerms[termUpto].getValue().size();
       }
 
@@ -909,8 +932,21 @@ public class MemoryIndex implements Serializable {
       public Comparator<BytesRef> getComparator() {
         return BytesRef.getUTF8SortedAsUnicodeComparator();
       }
-    }
 
+      @Override
+      public void seek(BytesRef term, TermState state) throws IOException {
+        assert state != null;
+        this.seek(((OrdTermState)state).ord);
+      }
+
+      @Override
+      public TermState termState() throws IOException {
+        OrdTermState ts = new OrdTermState();
+        ts.ord = termUpto;
+        return ts;
+      }
+    }
+    
     private class MemoryDocsEnum extends DocsEnum {
       private ArrayIntList positions;
       private boolean hasNext;
@@ -1129,32 +1165,33 @@ public class MemoryIndex implements Serializable {
       };
     }
 
-    private Similarity getSimilarity() {
-      if (searcher != null) return searcher.getSimilarity();
-      return Similarity.getDefault();
+    private SimilarityProvider getSimilarityProvider() {
+      if (searcher != null) return searcher.getSimilarityProvider();
+      return IndexSearcher.getDefaultSimilarityProvider();
     }
     
-    private void setSearcher(Searcher searcher) {
+    private void setSearcher(IndexSearcher searcher) {
       this.searcher = searcher;
     }
     
     /** performance hack: cache norms to avoid repeated expensive calculations */
     private byte[] cachedNorms;
     private String cachedFieldName;
-    private Similarity cachedSimilarity;
+    private SimilarityProvider cachedSimilarity;
     
     @Override
     public byte[] norms(String fieldName) {
       byte[] norms = cachedNorms;
-      Similarity sim = getSimilarity();
+      SimilarityProvider sim = getSimilarityProvider();
       if (fieldName != cachedFieldName || sim != cachedSimilarity) { // not cached?
         Info info = getInfo(fieldName);
+        Similarity fieldSim = sim.get(fieldName);
         int numTokens = info != null ? info.numTokens : 0;
         int numOverlapTokens = info != null ? info.numOverlapTokens : 0;
         float boost = info != null ? info.getBoost() : 1.0f; 
         FieldInvertState invertState = new FieldInvertState(0, numTokens, numOverlapTokens, 0, boost);
-        float n = sim.computeNorm(fieldName, invertState);
-        byte norm = sim.encodeNormValue(n);
+        float n = fieldSim.computeNorm(fieldName, invertState);
+        byte norm = fieldSim.encodeNormValue(n);
         norms = new byte[] {norm};
         
         // cache it for future reuse
@@ -1164,13 +1201,6 @@ public class MemoryIndex implements Serializable {
         if (DEBUG) System.err.println("MemoryIndexReader.norms: " + fieldName + ":" + n + ":" + norm + ":" + numTokens);
       }
       return norms;
-    }
-  
-    @Override
-    public void norms(String fieldName, byte[] bytes, int offset) {
-      if (DEBUG) System.err.println("MemoryIndexReader.norms*: " + fieldName);
-      byte[] norms = norms(fieldName);
-      System.arraycopy(norms, 0, bytes, offset, norms.length);
     }
   
     @Override

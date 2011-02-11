@@ -30,13 +30,12 @@ import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.XmlUpdateRequestHandler;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequestBase;
 import org.apache.solr.response.SolrQueryResponse;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 /**
  * 
@@ -60,6 +59,15 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
     processor = "dedupe"; // set the default that most tests expect
   }
 
+  void checkNumDocs(int n) {
+    SolrQueryRequest req = req();
+    try {
+      assertEquals(n, req.getSearcher().getIndexReader().numDocs());
+    } finally {
+      req.close();
+    }
+  }
+
   @Test
   public void testDupeDetection() throws Exception {
     SolrCore core = h.getCore();
@@ -79,14 +87,14 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
 
     addDoc(commit());
 
-    assertEquals(1l, core.getSearcher().get().getReader().numDocs());
+    checkNumDocs(1);
 
     addDoc(adoc("id", "3b", "v_t", "Hello Dude man!", "t_field",
         "fake value galore"));
 
     addDoc(commit());
 
-    assertEquals(2l, core.getSearcher().get().getReader().numDocs());
+    checkNumDocs(2);
 
     assertU(adoc("id", "5a", "name", "ali babi", "v_t", "MMMMM"));
 
@@ -96,14 +104,14 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
 
     addDoc(commit());
 
-    assertEquals(3l, core.getSearcher().get().getReader().numDocs());
+    checkNumDocs(3);
 
     addDoc(adoc("id", "same", "name", "baryy white", "v_t", "random1"));
     addDoc(adoc("id", "same", "name", "bishop black", "v_t", "random2"));
 
     addDoc(commit());
 
-    assertEquals(4l, core.getSearcher().get().getReader().numDocs());
+    checkNumDocs(4);
     factory.setEnabled(false);
   }
 
@@ -121,6 +129,7 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
     for (int i = 0; i < threads.length; i++) {
       threads[i] = new Thread() {
 
+        @Override
         public void run() {
           for (int i = 0; i < 30; i++) {
             // h.update(adoc("id", Integer.toString(1+ i), "v_t",
@@ -142,6 +151,7 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
     for (int i = 0; i < threads2.length; i++) {
       threads2[i] = new Thread() {
 
+        @Override
         public void run() {
           for (int i = 0; i < 10; i++) {
             // h.update(adoc("id" , Integer.toString(1+ i + 10000), "v_t",
@@ -180,7 +190,7 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
 
     assertU(commit());
 
-    assertEquals(1l, core.getSearcher().get().getReader().numDocs());
+    checkNumDocs(1);
     factory.setEnabled(false);
   }
 
@@ -191,16 +201,14 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
   public void testNonIndexedSignatureField() throws Exception {
     SolrCore core = h.getCore();
 
-    assertEquals("docs found when none are expected at start",
-                 0l, core.getSearcher().get().getReader().numDocs());
+    checkNumDocs(0);    
 
     processor = "stored_sig";
     addDoc(adoc("id", "2a", "v_t", "Hello Dude man!", "name", "ali babi'"));
     addDoc(adoc("id", "2b", "v_t", "Hello Dude man!", "name", "ali babi'"));
     addDoc(commit());
 
-    assertEquals("did not find exepcted docs",
-                 2l, core.getSearcher().get().getReader().numDocs());
+    checkNumDocs(2);
   }
 
   @Test
@@ -235,5 +243,6 @@ public class SignatureUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
     streams.add(new ContentStreamBase.StringStream(doc));
     req.setContentStreams(streams);
     handler.handleRequestBody(req, new SolrQueryResponse());
+    req.close();
   }
 }

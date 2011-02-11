@@ -37,8 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * <p> An implementation of EntityProcessor which uses a streaming xpath parser to extract values out of XML documents.
- * It is typically used in conjunction with HttpDataSource or FileDataSource. </p> <p/> <p> Refer to <a
+ * <p> An implementation of {@link EntityProcessor} which uses a streaming xpath parser to extract values out of XML documents.
+ * It is typically used in conjunction with {@link URLDataSource} or {@link FileDataSource}. </p> <p/> <p> Refer to <a
  * href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a> for more
  * details. </p>
  * <p/>
@@ -80,6 +80,7 @@ public class XPathEntityProcessor extends EntityProcessorBase {
 
   protected Thread publisherThread;
   
+  @Override
   @SuppressWarnings("unchecked")
   public void init(Context context) {
     super.init(context);
@@ -171,6 +172,7 @@ public class XPathEntityProcessor extends EntityProcessorBase {
 
   }
 
+  @Override
   public Map<String, Object> nextRow() {
     Map<String, Object> result;
 
@@ -398,6 +400,7 @@ public class XPathEntityProcessor extends EntityProcessorBase {
     final AtomicBoolean isEnd = new AtomicBoolean(false);
     final AtomicBoolean throwExp = new AtomicBoolean(true);
     publisherThread = new Thread() {
+      @Override
       public void run() {
         try {
           xpathReader.streamRecords(data, new XPathRecordReader.Handler() {

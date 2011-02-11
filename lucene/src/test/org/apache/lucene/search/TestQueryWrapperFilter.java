@@ -18,7 +18,6 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Field.Index;
 import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.index.IndexReader;
@@ -44,7 +43,7 @@ public class TestQueryWrapperFilter extends LuceneTestCase {
     // should not throw exception with primitive query
     QueryWrapperFilter qwf = new QueryWrapperFilter(termQuery);
 
-    IndexSearcher searcher = new IndexSearcher(reader);
+    IndexSearcher searcher = newSearcher(reader);
     TopDocs hits = searcher.search(new MatchAllDocsQuery(), qwf, 10);
     assertEquals(1, hits.totalHits);
     hits = searcher.search(new MatchAllDocsQuery(), new CachingWrapperFilter(qwf), 10);

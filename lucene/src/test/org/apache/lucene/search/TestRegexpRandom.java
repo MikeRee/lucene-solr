@@ -38,7 +38,7 @@ import org.apache.lucene.util._TestUtil;
  * and validates the correct number of hits are returned.
  */
 public class TestRegexpRandom extends LuceneTestCase {
-  private Searcher searcher;
+  private IndexSearcher searcher;
   private IndexReader reader;
   private Directory dir;
   
@@ -62,7 +62,7 @@ public class TestRegexpRandom extends LuceneTestCase {
     
     reader = writer.getReader();
     writer.close();
-    searcher = new IndexSearcher(reader);
+    searcher = newSearcher(reader);
   }
   
   private char N() {
