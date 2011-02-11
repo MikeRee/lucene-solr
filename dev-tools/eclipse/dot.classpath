@@ -162,6 +162,6 @@
 	<classpathentry kind="lib" path="solr/contrib/uima/lib/uima-an-tagger.jar"/>
 	<classpathentry kind="lib" path="solr/contrib/uima/lib/uima-an-wst.jar"/>
 	<classpathentry kind="lib" path="solr/contrib/uima/lib/uima-core.jar"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.6"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
